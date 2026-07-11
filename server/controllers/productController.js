@@ -2,11 +2,19 @@ const Product = require("../models/Product");
 
 const createProduct = async (req, res, next) => {
   try {
-    const { name, category, rentPrice, depositPrice } = req.body;
+    const { name, category, rentPrice, depositPrice, imageUrl, plateNumber } = req.body;
     if (!name || rentPrice === undefined) {
       return res.status(400).json({ message: "name and rentPrice are required" });
     }
-    const product = await Product.create({ storeId: req.storeId, name, category, rentPrice, depositPrice });
+    const product = await Product.create({
+      storeId: req.storeId,
+      name,
+      category,
+      rentPrice,
+      depositPrice,
+      imageUrl,
+      plateNumber
+    });
     res.status(201).json(product);
   } catch (err) {
     next(err);
@@ -36,7 +44,7 @@ const getProductById = async (req, res, next) => {
 
 const updateProduct = async (req, res, next) => {
   try {
-    const { name, category, rentPrice, depositPrice, status } = req.body;
+    const { name, category, rentPrice, depositPrice, imageUrl, plateNumber, status } = req.body;
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, storeId: req.storeId },
       {
@@ -45,6 +53,8 @@ const updateProduct = async (req, res, next) => {
           ...(category && { category }),
           ...(rentPrice !== undefined && { rentPrice }),
           ...(depositPrice !== undefined && { depositPrice }),
+          ...(imageUrl !== undefined && { imageUrl }),
+          ...(plateNumber !== undefined && { plateNumber }),
           ...(status && { status })
         }
       },
@@ -67,4 +77,12 @@ const deleteProduct = async (req, res, next) => {
   }
 };
 
-module.exports = { createProduct, getProducts, getProductById, updateProduct, deleteProduct };
+const uploadProductImage = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "No image file provided" });
+  }
+  const url = `${req.protocol}://${req.get("host")}/uploads/products/${req.file.filename}`;
+  res.status(201).json({ url });
+};
+
+module.exports = { createProduct, getProducts, getProductById, updateProduct, deleteProduct, uploadProductImage };

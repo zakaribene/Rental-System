@@ -6,6 +6,8 @@ const productSchema = new mongoose.Schema({
   category: { type: String, enum: ["bag", "clothing", "other"] },
   rentPrice: { type: Number, required: true },
   depositPrice: { type: Number },
+  imageUrl: { type: String },
+  plateNumber: { type: String },
   status: { type: String, enum: ["available", "rented", "damaged", "lost"], default: "available" },
   createdAt: { type: Date, default: Date.now }
 });

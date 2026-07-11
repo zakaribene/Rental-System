@@ -52,6 +52,7 @@ const createRental = async (req, res, next) => {
       let paymentId = null;
 
       if (deposit.depositType === "CASH") {
+        const itemsLabel = resolvedItems.length === 1 ? "1 item" : `${resolvedItems.length} items`;
         const payment = await Payment.create({
           storeId: req.storeId,
           transactionId: transaction._id,
@@ -59,7 +60,8 @@ const createRental = async (req, res, next) => {
           type: "DEPOSIT_COLLECTION",
           amount: deposit.cashAmount,
           paymentMethodId: deposit.paymentMethodId,
-          recordedBy: req.user.id
+          recordedBy: req.user.id,
+          note: `Deposit collected from ${customer.fullName} for rental #${transaction._id.toString().slice(-6)} (${itemsLabel}, rent fee ${totalRentFee})`
         });
         paymentId = payment._id;
       }
@@ -86,7 +88,9 @@ const getRentals = async (req, res, next) => {
   try {
     const filter = { storeId: req.storeId };
     if (req.query.status) filter.status = req.query.status;
-    const rentals = await RentalTransaction.find(filter).sort({ dateOut: -1 });
+    const rentals = await RentalTransaction.find(filter)
+      .populate("customerId", "fullName phone")
+      .sort({ dateOut: -1 });
     res.json(rentals);
   } catch (err) {
     next(err);
@@ -95,7 +99,9 @@ const getRentals = async (req, res, next) => {
 
 const getRentalById = async (req, res, next) => {
   try {
-    const rental = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId });
+    const rental = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId })
+      .populate("customerId", "fullName phone")
+      .populate("items.productId", "name");
     if (!rental) return res.status(404).json({ message: "Rental not found" });
     const deposits = await RentalDeposit.find({ transactionId: rental._id });
     res.json({ transaction: rental, deposits });
@@ -160,6 +166,7 @@ const returnRental = async (req, res, next) => {
 
     let refundPayment = null;
     if (depositRefunded > 0 && refundPaymentMethodId) {
+      const customer = await Customer.findById(transaction.customerId);
       refundPayment = await Payment.create({
         storeId: req.storeId,
         transactionId: transaction._id,
@@ -167,11 +174,17 @@ const returnRental = async (req, res, next) => {
         type: "REFUND",
         amount: depositRefunded,
         paymentMethodId: refundPaymentMethodId,
-        recordedBy: req.user.id
+        recordedBy: req.user.id,
+        note: `Deposit refund to ${customer?.fullName || "customer"} for rental #${transaction._id.toString().slice(-6)} — deposit ${cashDepositAlreadyPaid} minus rent fee/damages ${cashDepositAlreadyPaid - depositRefunded}`
       });
     }
 
-    res.json({ transaction, refundPayment });
+    const populatedTransaction = await RentalTransaction.findById(transaction._id).populate(
+      "customerId",
+      "fullName phone"
+    );
+
+    res.json({ transaction: populatedTransaction, refundPayment });
   } catch (err) {
     next(err);
   }

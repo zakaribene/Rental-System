@@ -3,10 +3,34 @@ const { createRental, getRentals, getRentalById, returnRental } = require("../co
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const { uploadDocument } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
 router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware);
+
+/**
+ * @swagger
+ * /rentals/upload-document:
+ *   post:
+ *     tags: [Rentals]
+ *     summary: Upload a deposit document image (e.g. passport)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image: { type: string, format: binary }
+ *     responses:
+ *       201: { description: Uploaded image URL }
+ */
+router.post("/upload-document", uploadDocument.single("image"), (req, res) => {
+  if (!req.file) return res.status(400).json({ message: "No image file provided" });
+  const url = `${req.protocol}://${req.get("host")}/uploads/documents/${req.file.filename}`;
+  res.status(201).json({ url });
+});
 
 /**
  * @swagger

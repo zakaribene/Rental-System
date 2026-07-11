@@ -15,6 +15,8 @@ const productRoutes = require("./routes/productRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const rentalRoutes = require("./routes/rentalRoutes");
 const reportRoutes = require("./routes/reportRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const myStoreRoutes = require("./routes/myStoreRoutes");
 
 connectDB();
 
@@ -23,6 +25,7 @@ const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+app.use("/uploads", express.static("uploads"));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
@@ -33,9 +36,11 @@ app.use("/api/stores", storeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/products", productRoutes);
-app.use("/api", paymentRoutes);
 app.use("/api/rentals", rentalRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/my-store", myStoreRoutes);
+app.use("/api", paymentRoutes);
 
 app.use(errorHandler);
 

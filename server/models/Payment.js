@@ -6,6 +6,7 @@ const paymentSchema = new mongoose.Schema({
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
   type: { type: String, enum: ["DEPOSIT_COLLECTION", "DEBT_SETTLEMENT", "REFUND"], required: true },
   amount: { type: Number, required: true },
+  note: { type: String },
   paymentMethodId: { type: mongoose.Schema.Types.ObjectId, ref: "PaymentMethod", required: true },
   recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   date: { type: Date, default: Date.now }

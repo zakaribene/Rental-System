@@ -4,11 +4,13 @@ const {
   getProducts,
   getProductById,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  uploadProductImage
 } = require("../controllers/productController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const { uploadProduct } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
@@ -32,6 +34,8 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *               category: { type: string, enum: [bag, clothing, other] }
  *               rentPrice: { type: number }
  *               depositPrice: { type: number }
+ *               imageUrl: { type: string }
+ *               plateNumber: { type: string, description: "Optional vehicle plate number (targa), for future vehicle rentals" }
  *     responses:
  *       201: { description: Product created }
  *   get:
@@ -46,6 +50,26 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  */
 router.post("/", createProduct);
 router.get("/", getProducts);
+
+/**
+ * @swagger
+ * /products/upload-image:
+ *   post:
+ *     tags: [Products]
+ *     summary: Upload a product image
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image: { type: string, format: binary }
+ *     responses:
+ *       201: { description: Uploaded image URL }
+ *       400: { description: No file provided or invalid type }
+ */
+router.post("/upload-image", uploadProduct.single("image"), uploadProductImage);
 
 /**
  * @swagger
@@ -79,6 +103,8 @@ router.get("/", getProducts);
  *               category: { type: string, enum: [bag, clothing, other] }
  *               rentPrice: { type: number }
  *               depositPrice: { type: number }
+ *               imageUrl: { type: string }
+ *               plateNumber: { type: string, description: "Optional vehicle plate number (targa), for future vehicle rentals" }
  *               status: { type: string, enum: [available, rented, damaged, lost] }
  *     responses:
  *       200: { description: Updated product }

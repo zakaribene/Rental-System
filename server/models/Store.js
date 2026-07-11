@@ -6,6 +6,8 @@ const storeSchema = new mongoose.Schema({
   ownerPhone: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
   status: { type: String, enum: ["active", "inactive"], default: "active" },
+  logoUrl: { type: String },
+  notificationsLastReadAt: { type: Date, default: () => new Date(0) },
   createdAt: { type: Date, default: Date.now }
 });
 
