@@ -12,6 +12,7 @@ const rentalTransactionSchema = new mongoose.Schema({
     }
   ],
   totalRentFee: { type: Number, required: true },
+  rentPaid: { type: Number, default: 0 },
   dateOut: { type: Date, default: Date.now },
   expectedReturnDate: { type: Date },
   status: { type: String, enum: ["active", "returned", "overdue"], default: "active" },
@@ -21,9 +22,21 @@ const rentalTransactionSchema = new mongoose.Schema({
     itemsMissing: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     itemsDamaged: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     depositRefunded: Number,
-    amountDeducted: Number,
-    remainingDebt: Number
+    damageDebt: { type: Number, default: 0 }
   }
 });
+
+// Rent fee owed is tracked independently of the deposit: the deposit is
+// refunded in full (minus damage/missing costs) on return, while the rent
+// fee itself is paid down separately via DEBT_SETTLEMENT payments, whether
+// the rental is still active or already returned.
+rentalTransactionSchema.virtual("remainingDebt").get(function () {
+  const damageDebt = this.returnDetails?.damageDebt || 0;
+  const debt = this.totalRentFee - (this.rentPaid || 0) + damageDebt;
+  return Math.max(0, debt);
+});
+
+rentalTransactionSchema.set("toJSON", { virtuals: true });
+rentalTransactionSchema.set("toObject", { virtuals: true });
 
 module.exports = mongoose.model("RentalTransaction", rentalTransactionSchema);

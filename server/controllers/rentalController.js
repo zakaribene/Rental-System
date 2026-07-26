@@ -104,7 +104,8 @@ const getRentalById = async (req, res, next) => {
       .populate("items.productId", "name");
     if (!rental) return res.status(404).json({ message: "Rental not found" });
     const deposits = await RentalDeposit.find({ transactionId: rental._id });
-    res.json({ transaction: rental, deposits });
+    const payments = await Payment.find({ transactionId: rental._id }).sort({ date: 1 });
+    res.json({ transaction: rental, deposits, payments });
   } catch (err) {
     next(err);
   }
@@ -128,19 +129,12 @@ const returnRental = async (req, res, next) => {
       0
     );
 
-    const totalOwed = transaction.totalRentFee - cashDepositAlreadyPaid + costOfDamagedOrMissingItems;
-
-    let remainingDebt = 0;
-    let depositRefunded = 0;
-    let amountDeducted;
-
-    if (totalOwed > 0) {
-      remainingDebt = totalOwed;
-      amountDeducted = cashDepositAlreadyPaid;
-    } else {
-      depositRefunded = -totalOwed;
-      amountDeducted = cashDepositAlreadyPaid - depositRefunded;
-    }
+    // The deposit only ever covers damage/missing-item costs. It is never
+    // used to pay down the rent fee — that is settled separately (see
+    // paymentController.createPayment, DEBT_SETTLEMENT) whether the rental
+    // is active or already returned.
+    const depositRefunded = Math.max(0, cashDepositAlreadyPaid - costOfDamagedOrMissingItems);
+    const damageDebt = Math.max(0, costOfDamagedOrMissingItems - cashDepositAlreadyPaid);
 
     transaction.status = "returned";
     transaction.returnDetails = {
@@ -149,8 +143,7 @@ const returnRental = async (req, res, next) => {
       itemsMissing,
       itemsDamaged,
       depositRefunded,
-      amountDeducted,
-      remainingDebt
+      damageDebt
     };
     await transaction.save();
 
@@ -175,7 +168,9 @@ const returnRental = async (req, res, next) => {
         amount: depositRefunded,
         paymentMethodId: refundPaymentMethodId,
         recordedBy: req.user.id,
-        note: `Deposit refund to ${customer?.fullName || "customer"} for rental #${transaction._id.toString().slice(-6)} — deposit ${cashDepositAlreadyPaid} minus rent fee/damages ${cashDepositAlreadyPaid - depositRefunded}`
+        note: `Deposit refund to ${customer?.fullName || "customer"} for rental #${transaction._id.toString().slice(-6)}${
+          damageDebt > 0 ? ` — deposit ${cashDepositAlreadyPaid} minus damage/missing costs ${costOfDamagedOrMissingItems}` : ""
+        }`
       });
     }
 

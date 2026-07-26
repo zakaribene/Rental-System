@@ -13,12 +13,14 @@ const dailyTotals = async (req, res, next) => {
 
     const byMethod = await Payment.aggregate([
       { $match: { storeId, date: { $gte: startOfDay, $lte: endOfDay } } },
-      { $group: { _id: "$paymentMethodId", total: { $sum: "$amount" } } }
+      { $project: { paymentMethodId: 1, signedAmount: { $cond: [{ $eq: ["$type", "REFUND"] }, { $multiply: ["$amount", -1] }, "$amount"] } } },
+      { $group: { _id: "$paymentMethodId", total: { $sum: "$signedAmount" } } }
     ]);
 
     const grandTotal = await Payment.aggregate([
       { $match: { storeId, date: { $gte: startOfDay, $lte: endOfDay } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } }
+      { $project: { signedAmount: { $cond: [{ $eq: ["$type", "REFUND"] }, { $multiply: ["$amount", -1] }, "$amount"] } } },
+      { $group: { _id: null, total: { $sum: "$signedAmount" } } }
     ]);
 
     res.json({
@@ -55,7 +57,8 @@ const summary = async (req, res, next) => {
 
     const results = await Payment.aggregate([
       { $match: match },
-      { $group: { _id: "$paymentMethodId", total: { $sum: "$amount" }, count: { $sum: 1 } } }
+      { $project: { paymentMethodId: 1, signedAmount: { $cond: [{ $eq: ["$type", "REFUND"] }, { $multiply: ["$amount", -1] }, "$amount"] } } },
+      { $group: { _id: "$paymentMethodId", total: { $sum: "$signedAmount" }, count: { $sum: 1 } } }
     ]);
 
     res.json(results);

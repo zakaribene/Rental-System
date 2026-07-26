@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ClipboardList, Trash2, PackageCheck, Upload, ArrowUpCircle, ArrowDownCircle, FileText } from 'lucide-react'
+import { Plus, ClipboardList, Trash2, PackageCheck, Upload, ArrowUpCircle, ArrowDownCircle, FileText, Banknote } from 'lucide-react'
 import { listRentals, createRental, getRental, returnRental, uploadDepositDocument } from '../../api/rentals'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
@@ -489,9 +489,17 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
               <p className="text-ink-400">Status</p>
               <StatusBadge status={transaction.status} />
             </div>
+            <div>
+              <p className="text-ink-400">Balance owed</p>
+              <p className={`font-semibold ${transaction.remainingDebt > 0 ? 'text-danger-600' : 'text-ink-800'}`}>
+                {formatMoney(transaction.remainingDebt)}
+              </p>
+            </div>
           </div>
 
           <DepositTicker deposits={detail.deposits} returnDetails={transaction.returnDetails} />
+
+          <RentalHistory payments={detail.payments} deposits={detail.deposits} />
 
           {transaction.status === 'active' ? (
             <form id="return-form" onSubmit={handleReturn} className="space-y-4">
@@ -550,18 +558,18 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
             </form>
           ) : (
             transaction.returnDetails && (
-              <div className="grid grid-cols-2 gap-4 rounded-lg bg-ink-50 p-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 rounded-lg bg-ink-50 p-4 text-sm dark:bg-ink-800/60">
                 <div>
                   <p className="text-ink-400">Deposit refunded</p>
-                  <p className="font-semibold text-ink-800">{formatMoney(transaction.returnDetails.depositRefunded)}</p>
+                  <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(transaction.returnDetails.depositRefunded)}</p>
                 </div>
                 <div>
                   <p className="text-ink-400">Remaining debt</p>
-                  <p className="font-semibold text-ink-800">{formatMoney(transaction.returnDetails.remainingDebt)}</p>
+                  <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(transaction.remainingDebt)}</p>
                 </div>
                 <div>
                   <p className="text-ink-400">Returned</p>
-                  <p className="font-semibold text-ink-800">{formatDateTime(transaction.returnDetails.returnDate)}</p>
+                  <p className="font-semibold text-ink-800 dark:text-ink-100">{formatDateTime(transaction.returnDetails.returnDate)}</p>
                 </div>
               </div>
             )
@@ -628,6 +636,62 @@ function DepositTicker({ deposits, returnDetails }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+const historyEventStyle = {
+  DEPOSIT_COLLECTION: { icon: ArrowUpCircle, tone: 'text-success-600', bg: 'bg-success-50', label: 'Deposit collected' },
+  REFUND: { icon: ArrowDownCircle, tone: 'text-danger-600', bg: 'bg-danger-50', label: 'Deposit refunded' },
+  DEBT_SETTLEMENT: { icon: Banknote, tone: 'text-primary-600', bg: 'bg-primary-50', label: 'Rent payment' },
+}
+
+function RentalHistory({ payments, deposits }) {
+  const nonCashDeposits = (deposits || []).filter((d) => d.depositType !== 'CASH')
+  const events = [
+    ...(payments || []).map((p) => ({
+      key: p._id,
+      date: p.date,
+      ...historyEventStyle[p.type],
+      amount: p.amount,
+      note: p.note,
+    })),
+    ...nonCashDeposits.map((d) => ({
+      key: d._id,
+      date: d.createdAt,
+      icon: FileText,
+      tone: 'text-ink-500',
+      bg: 'bg-ink-100',
+      label: d.depositType === 'GUARANTOR' ? 'Guarantor held' : 'Document held',
+      note: d.depositType === 'GUARANTOR' ? `${d.guarantorName || ''} ${d.guarantorPhone || ''}`.trim() : 'ID / passport as collateral',
+    })),
+  ].sort((a, b) => new Date(a.date) - new Date(b.date))
+
+  if (events.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-ink-100 bg-white p-4">
+      <p className="mb-3 text-sm font-semibold text-ink-700">History</p>
+      <div className="space-y-2">
+        {events.map((ev) => {
+          const Icon = ev.icon
+          return (
+            <div key={ev.key} className="flex items-start gap-3 rounded-lg border border-ink-100 p-2.5">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${ev.bg}`}>
+                <Icon size={16} className={ev.tone} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink-800">{ev.label}</p>
+                  {ev.amount !== undefined && <p className={`font-display text-sm font-bold ${ev.tone}`}>{formatMoney(ev.amount)}</p>}
+                </div>
+                {ev.note && <p className="mt-0.5 text-xs text-ink-500">{ev.note}</p>}
+                <p className="mt-0.5 text-xs text-ink-400">{formatDateTime(ev.date)}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

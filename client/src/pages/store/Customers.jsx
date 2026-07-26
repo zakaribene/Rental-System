@@ -122,7 +122,7 @@ export default function Customers() {
                 render: (row) => (
                   <div className="flex items-center gap-3">
                     <Avatar name={row.fullName} size={32} />
-                    <span className="font-semibold text-ink-900">{row.fullName}</span>
+                    <span className="font-semibold text-ink-900 dark:text-white">{row.fullName}</span>
                   </div>
                 ),
               },

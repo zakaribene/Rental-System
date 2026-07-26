@@ -126,7 +126,7 @@ export default function Stores() {
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50">
                       <StoreIcon size={16} className="text-primary-600" />
                     </div>
-                    <span className="font-semibold text-ink-900">{row.storeName}</span>
+                    <span className="font-semibold text-ink-900 dark:text-white">{row.storeName}</span>
                   </div>
                 ),
               },

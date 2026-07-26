@@ -169,9 +169,9 @@ export default function Reports() {
               {daily?.byMethod?.length > 0 && (
                 <div className="mt-5 space-y-2">
                   {daily.byMethod.map((m) => (
-                    <div key={m._id} className="flex items-center justify-between rounded-lg bg-ink-50 px-4 py-2.5 text-sm">
-                      <span className="font-medium text-ink-700">{methodName(m._id)}</span>
-                      <span className="font-bold text-ink-900">{formatMoney(m.total)}</span>
+                    <div key={m._id} className="flex items-center justify-between rounded-lg bg-ink-50 px-4 py-2.5 text-sm dark:bg-ink-800/60">
+                      <span className="font-medium text-ink-700 dark:text-ink-300">{methodName(m._id)}</span>
+                      <span className="font-bold text-ink-900 dark:text-white">{formatMoney(m.total)}</span>
                     </div>
                   ))}
                 </div>
@@ -191,7 +191,7 @@ export default function Reports() {
               {summary.map((s) => (
                 <div key={s._id} className="rounded-xl border border-ink-100 p-4">
                   <p className="text-sm font-medium text-ink-500">{methodName(s._id)}</p>
-                  <p className="mt-1 font-display text-xl font-extrabold text-ink-900">{formatMoney(s.total)}</p>
+                  <p className="mt-1 font-display text-xl font-extrabold text-ink-900 dark:text-white">{formatMoney(s.total)}</p>
                   <p className="mt-1 text-xs text-ink-400">{s.count} transaction(s)</p>
                 </div>
               ))}

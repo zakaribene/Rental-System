@@ -83,7 +83,7 @@ export default function StaffUsers() {
                 render: (row) => (
                   <div className="flex items-center gap-3">
                     <Avatar name={row.name} size={32} />
-                    <span className="font-semibold text-ink-900">{row.name}</span>
+                    <span className="font-semibold text-ink-900 dark:text-white">{row.name}</span>
                   </div>
                 ),
               },

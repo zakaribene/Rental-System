@@ -52,7 +52,7 @@ export default function SuperAdminDashboard() {
               {
                 key: 'storeName',
                 header: 'Store',
-                render: (row) => <span className="font-semibold text-ink-900">{row.storeName}</span>,
+                render: (row) => <span className="font-semibold text-ink-900 dark:text-white">{row.storeName}</span>,
               },
               { key: 'ownerName', header: 'Owner' },
               { key: 'ownerPhone', header: 'Phone' },
@@ -70,7 +70,7 @@ export default function SuperAdminDashboard() {
             <div>
               <div className="mb-1.5 flex items-center justify-between text-sm">
                 <span className="font-medium text-ink-600">Active</span>
-                <span className="font-bold text-ink-900">
+                <span className="font-bold text-ink-900 dark:text-white">
                   {stores.length ? Math.round((active / stores.length) * 100) : 0}%
                 </span>
               </div>
@@ -84,7 +84,7 @@ export default function SuperAdminDashboard() {
             <div>
               <div className="mb-1.5 flex items-center justify-between text-sm">
                 <span className="font-medium text-ink-600">Inactive</span>
-                <span className="font-bold text-ink-900">
+                <span className="font-bold text-ink-900 dark:text-white">
                   {stores.length ? Math.round((inactive / stores.length) * 100) : 0}%
                 </span>
               </div>

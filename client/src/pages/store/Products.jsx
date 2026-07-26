@@ -188,7 +188,7 @@ export default function Products() {
                 </div>
               </div>
               <div className="p-4">
-                <p className="truncate font-display font-bold text-ink-900">{product.name}</p>
+                <p className="truncate font-display font-bold text-ink-900 dark:text-white">{product.name}</p>
                 <p className="mt-0.5 text-xs capitalize text-ink-400">
                   {product.category || 'other'}
                   {product.plateNumber && ` · ${product.plateNumber}`}

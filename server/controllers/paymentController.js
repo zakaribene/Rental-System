@@ -58,10 +58,10 @@ const createPayment = async (req, res, next) => {
         return res.status(400).json({ message: "transactionId is required for a debt settlement" });
       }
       transaction = await RentalTransaction.findOne({ _id: transactionId, storeId: req.storeId });
-      if (!transaction || !transaction.returnDetails) {
-        return res.status(404).json({ message: "No outstanding debt found for this rental" });
+      if (!transaction) {
+        return res.status(404).json({ message: "Rental not found" });
       }
-      const remainingDebt = transaction.returnDetails.remainingDebt || 0;
+      const remainingDebt = transaction.remainingDebt;
       if (remainingDebt <= 0) {
         return res.status(409).json({ message: "This rental has no remaining debt", remainingDebt: 0 });
       }
@@ -79,7 +79,7 @@ const createPayment = async (req, res, next) => {
 
     let note;
     if (type === "DEBT_SETTLEMENT") {
-      const remainingAfter = Math.max(0, (transaction.returnDetails.remainingDebt || 0) - amount);
+      const remainingAfter = Math.max(0, transaction.remainingDebt - amount);
       note =
         remainingAfter > 0
           ? `${customerLabel} paid ${amount} toward ${rentalLabel} — ${remainingAfter} still owed`
@@ -103,9 +103,9 @@ const createPayment = async (req, res, next) => {
 
     let remainingDebt;
     if (type === "DEBT_SETTLEMENT" && transaction) {
-      transaction.returnDetails.remainingDebt = Math.max(0, transaction.returnDetails.remainingDebt - amount);
+      transaction.rentPaid = (transaction.rentPaid || 0) + amount;
       await transaction.save();
-      remainingDebt = transaction.returnDetails.remainingDebt;
+      remainingDebt = transaction.remainingDebt;
     }
 
     res.status(201).json({ payment, remainingDebt });
