@@ -4,6 +4,8 @@ import { listPaymentMethods, createPaymentMethod, createPayment } from '../../ap
 import { listRentals } from '../../api/rentals'
 import Card, { CardHeader } from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
+import Pagination from '../../components/ui/Pagination'
+import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
@@ -21,6 +23,7 @@ export default function Payments() {
   const loadDebtRentals = () => {
     listRentals().then((rentals) => setDebtRentals(rentals.filter((r) => (r.remainingDebt || 0) > 0)))
   }
+  const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(debtRentals, 10)
 
   useEffect(() => {
     listPaymentMethods().then(setMethods)
@@ -63,8 +66,9 @@ export default function Payments() {
                 ),
               },
             ]}
-            data={debtRentals}
+            data={pageItems}
           />
+          <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onChange={setPage} />
         </Card>
       )}
 

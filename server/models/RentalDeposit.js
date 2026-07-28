@@ -8,6 +8,7 @@ const rentalDepositSchema = new mongoose.Schema({
   documentImageUrl: { type: String },
   guarantorName: { type: String },
   guarantorPhone: { type: String },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Package, Search, ImageOff, Trash2, Pencil, Upload, X } from 'lucide-react'
+import { Plus, Package, Search, ImageOff, Trash2, Pencil, Upload, X, Eye } from 'lucide-react'
 import { listProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../../api/products'
+import Card from '../../components/ui/Card'
+import Table from '../../components/ui/Table'
+import Pagination from '../../components/ui/Pagination'
+import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
@@ -30,6 +34,7 @@ export default function Products() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [viewProduct, setViewProduct] = useState(null)
   const fileInputRef = useRef(null)
 
   const load = () => {
@@ -41,7 +46,11 @@ export default function Products() {
 
   useEffect(load, [statusFilter])
 
-  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+  const query = search.trim().toLowerCase()
+  const filtered = query
+    ? products.filter((p) => [p.name, p.category, p.plateNumber].some((v) => v?.toLowerCase().includes(query)))
+    : products
+  const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(filtered, 10)
 
   const openCreate = () => {
     setEditing(null)
@@ -126,32 +135,34 @@ export default function Products() {
         }
       />
 
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="relative w-full max-w-xs">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products..."
-            className="h-10 w-full rounded-lg border border-ink-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-primary-400 focus:ring-4 focus:ring-primary-100"
-          />
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 px-6 py-4 dark:border-ink-800">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full max-w-xs">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search products..."
+                className="h-9 w-full rounded-lg border border-ink-200 bg-ink-50 pl-9 pr-3 text-sm outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100 dark:border-ink-700 dark:bg-ink-800 dark:focus:bg-ink-800"
+              />
+            </div>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
+              <option value="">All statuses</option>
+              <option value="available">Available</option>
+              <option value="rented">Rented</option>
+              <option value="damaged">Damaged</option>
+              <option value="lost">Lost</option>
+            </Select>
+          </div>
+          <span className="text-sm font-medium text-ink-400">{total} product(s)</span>
         </div>
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
-          <option value="">All statuses</option>
-          <option value="available">Available</option>
-          <option value="rented">Rented</option>
-          <option value="damaged">Damaged</option>
-          <option value="lost">Lost</option>
-        </Select>
-        <span className="text-sm font-medium text-ink-400">{filtered.length} product(s)</span>
-      </div>
 
-      {loading ? (
-        <div className="flex h-48 items-center justify-center">
-          <Spinner size={28} />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-xl2 border border-ink-100 bg-white">
+        {loading ? (
+          <div className="flex h-48 items-center justify-center">
+            <Spinner size={28} />
+          </div>
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon={Package}
             title="No products yet"
@@ -162,57 +173,52 @@ export default function Products() {
               </Button>
             }
           />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((product) => (
-            <div
-              key={product._id}
-              className="group overflow-hidden rounded-xl2 border border-ink-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-pop"
-            >
-              <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-100">
-                {product.imageUrl ? (
-                  <img
-                    src={product.imageUrl}
-                    alt={product.name}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    onError={(e) => (e.currentTarget.style.display = 'none')}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-ink-300">
-                    <ImageOff size={28} />
-                  </div>
-                )}
-                <div className="absolute right-2 top-2">
-                  <StatusBadge status={product.status} />
-                </div>
-              </div>
-              <div className="p-4">
-                <p className="truncate font-display font-bold text-ink-900 dark:text-white">{product.name}</p>
-                <p className="mt-0.5 text-xs capitalize text-ink-400">
-                  {product.category || 'other'}
-                  {product.plateNumber && ` · ${product.plateNumber}`}
-                </p>
-                <div className="mt-3 flex items-baseline gap-1">
-                  <span className="font-display text-lg font-extrabold text-primary-700">
-                    {formatMoney(product.rentPrice)}
-                  </span>
-                  <span className="text-xs text-ink-400">/ rental</span>
-                </div>
-                {product.depositPrice ? (
-                  <p className="mt-0.5 text-xs text-ink-400">Deposit {formatMoney(product.depositPrice)}</p>
-                ) : null}
-                <div className="mt-4 flex gap-2">
-                  <Button size="sm" variant="secondary" icon={Pencil} className="flex-1" onClick={() => openEdit(product)}>
-                    Edit
-                  </Button>
-                  <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(product)} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        ) : (
+          <>
+            <Table
+              onRowClick={(row) => setViewProduct(row)}
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Product',
+                  render: (row) => (
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
+                        {row.imageUrl ? (
+                          <img src={row.imageUrl} alt={row.name} className="h-full w-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                        ) : (
+                          <ImageOff size={16} className="text-ink-300" />
+                        )}
+                      </div>
+                      <span className="font-semibold text-ink-900 dark:text-white">{row.name}</span>
+                    </div>
+                  ),
+                },
+                { key: 'category', header: 'Category', render: (row) => <span className="capitalize">{row.category || 'other'}</span> },
+                { key: 'plateNumber', header: 'Plate', render: (row) => row.plateNumber || '—' },
+                { key: 'rentPrice', header: 'Rent price', render: (row) => formatMoney(row.rentPrice) },
+                { key: 'depositPrice', header: 'Deposit', render: (row) => (row.depositPrice ? formatMoney(row.depositPrice) : '—') },
+                { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                {
+                  key: 'actions',
+                  header: '',
+                  headerClassName: 'text-right',
+                  className: 'text-right',
+                  render: (row) => (
+                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" variant="secondary" icon={Eye} onClick={() => setViewProduct(row)} />
+                      <Button size="sm" variant="secondary" icon={Pencil} onClick={() => openEdit(row)} />
+                      <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(row)} />
+                    </div>
+                  ),
+                },
+              ]}
+              data={pageItems}
+            />
+            <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onChange={setPage} />
+          </>
+        )}
+      </Card>
 
       <Modal
         open={modalOpen}
@@ -331,6 +337,63 @@ export default function Products() {
             />
           </Field>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!viewProduct}
+        onClose={() => setViewProduct(null)}
+        title={viewProduct?.name}
+        subtitle="Product details"
+        footer={
+          <Button
+            variant="secondary"
+            onClick={() => {
+              openEdit(viewProduct)
+              setViewProduct(null)
+            }}
+            icon={Pencil}
+          >
+            Edit
+          </Button>
+        }
+      >
+        {viewProduct && (
+          <div className="space-y-4">
+            <div className="aspect-video w-full overflow-hidden rounded-xl bg-ink-100 dark:bg-ink-800">
+              {viewProduct.imageUrl ? (
+                <img src={viewProduct.imageUrl} alt={viewProduct.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-ink-300">
+                  <ImageOff size={32} />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-ink-400">Category</p>
+                <p className="font-semibold capitalize text-ink-800 dark:text-ink-100">{viewProduct.category || 'other'}</p>
+              </div>
+              <div>
+                <p className="text-ink-400">Status</p>
+                <StatusBadge status={viewProduct.status} />
+              </div>
+              <div>
+                <p className="text-ink-400">Rent price</p>
+                <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(viewProduct.rentPrice)}</p>
+              </div>
+              <div>
+                <p className="text-ink-400">Deposit price</p>
+                <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.depositPrice ? formatMoney(viewProduct.depositPrice) : '—'}</p>
+              </div>
+              {viewProduct.plateNumber && (
+                <div>
+                  <p className="text-ink-400">Plate number</p>
+                  <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.plateNumber}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

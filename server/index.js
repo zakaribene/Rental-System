@@ -17,8 +17,10 @@ const rentalRoutes = require("./routes/rentalRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const myStoreRoutes = require("./routes/myStoreRoutes");
+const { startOverdueJob } = require("./jobs/overdueJob");
 
 connectDB();
+startOverdueJob();
 
 const app = express();
 

@@ -6,7 +6,7 @@ export function cn(...inputs) {
 
 export function formatMoney(amount) {
   const value = Number(amount) || 0
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)
+  return `$${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)}`
 }
 
 export function formatDate(date) {

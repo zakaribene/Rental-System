@@ -3,14 +3,15 @@ const Store = require("../models/Store");
 
 const sendNotification = async (req, res, next) => {
   try {
-    const { message, targetStoreId } = req.body;
+    const { message, targetStoreId, isBanner } = req.body;
     if (!message) {
       return res.status(400).json({ message: "message is required" });
     }
     const notification = await Notification.create({
       message,
       targetStoreId: targetStoreId || null,
-      createdBy: req.user.id
+      createdBy: req.user.id,
+      isBanner: !!isBanner
     });
     res.status(201).json(notification);
   } catch (err) {
@@ -32,8 +33,11 @@ const listAllNotifications = async (req, res, next) => {
 
 const listStoreNotifications = async (req, res, next) => {
   try {
+    const store = await Store.findById(req.storeId);
+    const lastReadAt = store?.notificationsLastReadAt || new Date(0);
     const notifications = await Notification.find({
-      $or: [{ targetStoreId: null }, { targetStoreId: req.storeId }]
+      $or: [{ targetStoreId: null }, { targetStoreId: req.storeId }],
+      createdAt: { $gt: lastReadAt }
     })
       .sort({ createdAt: -1 })
       .limit(50);
@@ -66,4 +70,35 @@ const markAllRead = async (req, res, next) => {
   }
 };
 
-module.exports = { sendNotification, listAllNotifications, listStoreNotifications, getUnreadCount, markAllRead };
+const getActiveBanner = async (req, res, next) => {
+  try {
+    const banner = await Notification.findOne({
+      $or: [{ targetStoreId: null }, { targetStoreId: req.storeId }],
+      isBanner: true,
+      active: true
+    }).sort({ createdAt: -1 });
+    res.json(banner || null);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const closeBanner = async (req, res, next) => {
+  try {
+    const notification = await Notification.findByIdAndUpdate(req.params.id, { active: false }, { new: true });
+    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    res.json(notification);
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  sendNotification,
+  listAllNotifications,
+  listStoreNotifications,
+  getUnreadCount,
+  markAllRead,
+  getActiveBanner,
+  closeBanner
+};

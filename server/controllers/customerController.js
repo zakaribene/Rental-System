@@ -2,11 +2,18 @@ const Customer = require("../models/Customer");
 
 const createCustomer = async (req, res, next) => {
   try {
-    const { fullName, phone, idDocumentNumber } = req.body;
+    const { fullName, phone, idDocumentNumber, photoUrl, idDocumentImageUrl } = req.body;
     if (!fullName || !phone) {
       return res.status(400).json({ message: "fullName and phone are required" });
     }
-    const customer = await Customer.create({ storeId: req.storeId, fullName, phone, idDocumentNumber });
+    const customer = await Customer.create({
+      storeId: req.storeId,
+      fullName,
+      phone,
+      idDocumentNumber,
+      photoUrl,
+      idDocumentImageUrl
+    });
     res.status(201).json(customer);
   } catch (err) {
     next(err);
@@ -34,10 +41,18 @@ const getCustomerById = async (req, res, next) => {
 
 const updateCustomer = async (req, res, next) => {
   try {
-    const { fullName, phone, idDocumentNumber } = req.body;
+    const { fullName, phone, idDocumentNumber, photoUrl, idDocumentImageUrl } = req.body;
     const customer = await Customer.findOneAndUpdate(
       { _id: req.params.id, storeId: req.storeId },
-      { $set: { ...(fullName && { fullName }), ...(phone && { phone }), ...(idDocumentNumber !== undefined && { idDocumentNumber }) } },
+      {
+        $set: {
+          ...(fullName && { fullName }),
+          ...(phone && { phone }),
+          ...(idDocumentNumber !== undefined && { idDocumentNumber }),
+          ...(photoUrl !== undefined && { photoUrl }),
+          ...(idDocumentImageUrl !== undefined && { idDocumentImageUrl })
+        }
+      },
       { new: true }
     );
     if (!customer) return res.status(404).json({ message: "Customer not found" });

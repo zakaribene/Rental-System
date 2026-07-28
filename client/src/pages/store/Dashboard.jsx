@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Package, Users, ClipboardList, Wallet, Clock, PiggyBank } from 'lucide-react'
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { Package, Users, ClipboardList, Wallet, Clock, PiggyBank, Trophy, Star } from 'lucide-react'
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts'
 import { listProducts } from '../../api/products'
 import { listCustomers } from '../../api/customers'
 import { listRentals } from '../../api/rentals'
-import { getDailyTotals, getSummary } from '../../api/reports'
+import { getDailyTotals, getSummary, getAnalytics } from '../../api/reports'
 import { listPaymentMethods } from '../../api/payments'
 import StatCard from '../../components/ui/StatCard'
 import Card, { CardHeader } from '../../components/ui/Card'
@@ -85,6 +85,7 @@ export default function StoreDashboard() {
   const [daily, setDaily] = useState({ grandTotal: 0, byMethod: [] })
   const [summary, setSummary] = useState([])
   const [methods, setMethods] = useState([])
+  const [analytics, setAnalytics] = useState({ topProducts: [], topCustomers: [], trend: [] })
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10)
@@ -95,14 +96,16 @@ export default function StoreDashboard() {
       getDailyTotals(today).catch(() => ({ grandTotal: 0, byMethod: [] })),
       getSummary({}).catch(() => []),
       listPaymentMethods().catch(() => []),
+      getAnalytics().catch(() => ({ topProducts: [], topCustomers: [], trend: [] })),
     ])
-      .then(([p, c, r, d, s, m]) => {
+      .then(([p, c, r, d, s, m, a]) => {
         setProducts(p)
         setCustomers(c)
         setRentals(r)
         setDaily(d)
         setSummary(s)
         setMethods(m)
+        setAnalytics(a)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -128,6 +131,8 @@ export default function StoreDashboard() {
       .filter(([, value]) => value > 0)
       .map(([key, value]) => ({ name: productStatusMeta[key]?.label || key, value, color: productStatusMeta[key]?.color || '#677185' }))
   }, [products])
+
+  const trendData = useMemo(() => analytics.trend.map((t) => ({ period: t.period, total: t.total })), [analytics.trend])
 
   if (loading) {
     return (
@@ -232,6 +237,85 @@ export default function StoreDashboard() {
                   <Legend verticalAlign="bottom" height={40} content={<PieLegend />} />
                 </PieChart>
               </ResponsiveContainer>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {trendData.length > 0 && (
+        <div className="mt-8">
+          <Card>
+            <CardHeader title="Revenue trend" subtitle={`Net collected per ${trendData.length > 6 ? 'week' : 'month'}`} />
+            <div className="p-4 pt-2">
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={trendData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="trend-gradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8b7bff" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#8b7bff" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-ink-100 dark:text-ink-800" vertical={false} />
+                  <XAxis dataKey="period" tick={{ fontSize: 12, fill: '#8690a3' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12, fill: '#8690a3' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(value) => formatMoney(value)} contentStyle={chartTooltipStyle} />
+                  <Area type="monotone" dataKey="total" stroke="#6c4fff" strokeWidth={2.5} fill="url(#trend-gradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Top products" subtitle="Most rented items" />
+          <div className="p-2">
+            {analytics.topProducts.length === 0 ? (
+              <EmptyState icon={Trophy} title="No rentals yet" />
+            ) : (
+              <div className="divide-y divide-ink-50 dark:divide-ink-800">
+                {analytics.topProducts.map((p, i) => (
+                  <div key={p._id || i} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-bold text-primary-600 dark:bg-primary-500/15 dark:text-primary-300">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">{p.name || 'Unknown product'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-ink-900 dark:text-white">{p.rentals} rented</p>
+                      <p className="text-xs text-ink-400">{formatMoney(p.revenue)} revenue</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Top customers" subtitle="Highest revenue generated" />
+          <div className="p-2">
+            {analytics.topCustomers.length === 0 ? (
+              <EmptyState icon={Star} title="No customers yet" />
+            ) : (
+              <div className="divide-y divide-ink-50 dark:divide-ink-800">
+                {analytics.topCustomers.map((c, i) => (
+                  <div key={c._id || i} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-50 text-xs font-bold text-success-600 dark:bg-success-500/15 dark:text-success-300">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">{c.fullName || 'Unknown customer'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-ink-900 dark:text-white">{formatMoney(c.revenue)}</p>
+                      <p className="text-xs text-ink-400">{c.rentals} rental(s)</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </Card>

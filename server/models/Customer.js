@@ -5,6 +5,8 @@ const customerSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
   phone: { type: String, required: true },
   idDocumentNumber: { type: String },
+  photoUrl: { type: String },
+  idDocumentImageUrl: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

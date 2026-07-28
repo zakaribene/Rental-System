@@ -22,18 +22,26 @@ const rentalTransactionSchema = new mongoose.Schema({
     itemsMissing: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     itemsDamaged: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     depositRefunded: Number,
-    damageDebt: { type: Number, default: 0 }
+    damageDebt: { type: Number, default: 0 },
+    lateFee: { type: Number, default: 0 },
+    returnedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
   }
 });
 
 // Rent fee owed is tracked independently of the deposit: the deposit is
 // refunded in full (minus damage/missing costs) on return, while the rent
 // fee itself is paid down separately via DEBT_SETTLEMENT payments, whether
-// the rental is still active or already returned.
+// the rental is still active or already returned. Any late fee charged on
+// return is added on top, the same way damage cost is.
 rentalTransactionSchema.virtual("remainingDebt").get(function () {
   const damageDebt = this.returnDetails?.damageDebt || 0;
-  const debt = this.totalRentFee - (this.rentPaid || 0) + damageDebt;
+  const lateFee = this.returnDetails?.lateFee || 0;
+  const debt = this.totalRentFee - (this.rentPaid || 0) + damageDebt + lateFee;
   return Math.max(0, debt);
+});
+
+rentalTransactionSchema.virtual("isOverdue").get(function () {
+  return this.status === "active" && this.expectedReturnDate && this.expectedReturnDate.getTime() < Date.now();
 });
 
 rentalTransactionSchema.set("toJSON", { virtuals: true });

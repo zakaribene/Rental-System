@@ -3,6 +3,8 @@ import { Plus, Building2, Search, Phone, User, Lock, Store as StoreIcon } from '
 import { listStores, createStore, updateStore } from '../../api/stores'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
+import Pagination from '../../components/ui/Pagination'
+import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field } from '../../components/ui/Input'
@@ -35,6 +37,7 @@ export default function Stores() {
   const filtered = stores.filter((s) =>
     [s.storeName, s.ownerName, s.ownerPhone].some((v) => v?.toLowerCase().includes(search.toLowerCase()))
   )
+  const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(filtered, 10)
 
   const openCreate = () => {
     setEditing(null)
@@ -97,7 +100,7 @@ export default function Stores() {
               className="h-9 w-full rounded-lg border border-ink-200 bg-ink-50 pl-9 pr-3 text-sm outline-none focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100"
             />
           </div>
-          <span className="text-sm font-medium text-ink-400">{filtered.length} total</span>
+          <span className="text-sm font-medium text-ink-400">{total} total</span>
         </div>
 
         {loading ? (
@@ -116,47 +119,50 @@ export default function Stores() {
             }
           />
         ) : (
-          <Table
-            columns={[
-              {
-                key: 'storeName',
-                header: 'Store',
-                render: (row) => (
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50">
-                      <StoreIcon size={16} className="text-primary-600" />
+          <>
+            <Table
+              columns={[
+                {
+                  key: 'storeName',
+                  header: 'Store',
+                  render: (row) => (
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50">
+                        <StoreIcon size={16} className="text-primary-600" />
+                      </div>
+                      <span className="font-semibold text-ink-900 dark:text-white">{row.storeName}</span>
                     </div>
-                    <span className="font-semibold text-ink-900 dark:text-white">{row.storeName}</span>
-                  </div>
-                ),
-              },
-              { key: 'ownerName', header: 'Owner' },
-              { key: 'ownerPhone', header: 'Phone' },
-              { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-              { key: 'createdAt', header: 'Joined', render: (row) => formatDate(row.createdAt) },
-              {
-                key: 'actions',
-                header: '',
-                headerClassName: 'text-right',
-                className: 'text-right',
-                render: (row) => (
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={row.status === 'active' ? 'ghost' : 'subtle'}
-                      onClick={() => toggleStatus(row)}
-                    >
-                      {row.status === 'active' ? 'Deactivate' : 'Activate'}
-                    </Button>
-                  </div>
-                ),
-              },
-            ]}
-            data={filtered}
-          />
+                  ),
+                },
+                { key: 'ownerName', header: 'Owner' },
+                { key: 'ownerPhone', header: 'Phone' },
+                { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                { key: 'createdAt', header: 'Joined', render: (row) => formatDate(row.createdAt) },
+                {
+                  key: 'actions',
+                  header: '',
+                  headerClassName: 'text-right',
+                  className: 'text-right',
+                  render: (row) => (
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={row.status === 'active' ? 'ghost' : 'subtle'}
+                        onClick={() => toggleStatus(row)}
+                      >
+                        {row.status === 'active' ? 'Deactivate' : 'Activate'}
+                      </Button>
+                    </div>
+                  ),
+                },
+              ]}
+              data={pageItems}
+            />
+            <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onChange={setPage} />
+          </>
         )}
       </Card>
 

@@ -1,23 +1,50 @@
-import { useEffect, useState } from 'react'
-import { Building2, CheckCircle2, XCircle, TrendingUp } from 'lucide-react'
-import { listStores } from '../../api/stores'
+import { useEffect, useMemo, useState } from 'react'
+import { Building2, CheckCircle2, XCircle, TrendingUp, Wallet, Crown } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { listStores, getStoreAnalytics } from '../../api/stores'
 import StatCard from '../../components/ui/StatCard'
 import Card, { CardHeader, CardBody } from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import { StatusBadge } from '../../components/ui/Badge'
-import { PageHeader } from '../../components/ui/Misc'
-import { formatDate } from '../../lib/utils'
+import { PageHeader, EmptyState } from '../../components/ui/Misc'
+import { formatDate, formatMoney } from '../../lib/utils'
 import { Spinner } from '../../components/ui/Misc'
+
+const chartTooltipStyle = {
+  borderRadius: 12,
+  border: '1px solid var(--tooltip-border)',
+  background: 'var(--tooltip-bg)',
+  color: 'var(--tooltip-text)',
+  fontSize: 13,
+  boxShadow: '0 8px 24px -8px rgba(15, 16, 23, 0.25)',
+}
 
 export default function SuperAdminDashboard() {
   const [stores, setStores] = useState([])
+  const [storeAnalytics, setStoreAnalytics] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    listStores()
-      .then(setStores)
+    Promise.all([listStores(), getStoreAnalytics().catch(() => [])])
+      .then(([s, a]) => {
+        setStores(s)
+        setStoreAnalytics(a)
+      })
       .finally(() => setLoading(false))
   }, [])
+
+  const revenueChartData = useMemo(
+    () =>
+      storeAnalytics.map((s) => ({
+        name: s.storeName,
+        revenue: s.revenue,
+        fill: s.revenue > 0 ? '#6c4fff' : '#d5d9e1',
+      })),
+    [storeAnalytics]
+  )
+  const totalPlatformRevenue = storeAnalytics.reduce((sum, s) => sum + s.revenue, 0)
+  const topStore = storeAnalytics[0]
+  const bottomStore = storeAnalytics.length > 1 ? storeAnalytics[storeAnalytics.length - 1] : null
 
   const active = stores.filter((s) => s.status === 'active').length
   const inactive = stores.length - active
@@ -39,6 +66,37 @@ export default function SuperAdminDashboard() {
         <StatCard label="Total stores" value={stores.length} icon={Building2} tone="primary" />
         <StatCard label="Active stores" value={active} icon={CheckCircle2} tone="success" />
         <StatCard label="Inactive stores" value={inactive} icon={XCircle} tone="danger" />
+      </div>
+
+      <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-3">
+        <StatCard label="Platform revenue" value={formatMoney(totalPlatformRevenue)} icon={Wallet} tone="success" />
+        <StatCard label="Top performing store" value={topStore?.storeName || '—'} icon={Crown} tone="primary" />
+        <StatCard label="Lowest performing store" value={bottomStore?.storeName || '—'} icon={TrendingUp} tone="warning" />
+      </div>
+
+      <div className="mt-8">
+        <Card>
+          <CardHeader title="Revenue by store" subtitle="Compare net collected revenue across all stores" />
+          <div className="p-4 pt-2">
+            {revenueChartData.length === 0 ? (
+              <EmptyState icon={Wallet} title="No revenue data yet" />
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(220, revenueChartData.length * 40)}>
+                <BarChart data={revenueChartData} layout="vertical" margin={{ top: 10, right: 24, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-ink-100 dark:text-ink-800" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 12, fill: '#8690a3' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 12, fill: '#8690a3' }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(value) => formatMoney(value)} contentStyle={chartTooltipStyle} cursor={{ fill: 'var(--chart-cursor)' }} />
+                  <Bar dataKey="revenue" radius={[0, 8, 8, 0]}>
+                    {revenueChartData.map((entry, index) => (
+                      <Cell key={index} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </Card>
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">

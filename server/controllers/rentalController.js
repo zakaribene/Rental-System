@@ -73,7 +73,8 @@ const createRental = async (req, res, next) => {
         paymentId,
         documentImageUrl: deposit.documentImageUrl,
         guarantorName: deposit.guarantorName,
-        guarantorPhone: deposit.guarantorPhone
+        guarantorPhone: deposit.guarantorPhone,
+        createdBy: req.user.id
       });
       createdDeposits.push(rentalDeposit);
     }
@@ -88,8 +89,10 @@ const getRentals = async (req, res, next) => {
   try {
     const filter = { storeId: req.storeId };
     if (req.query.status) filter.status = req.query.status;
+    if (req.query.customerId) filter.customerId = req.query.customerId;
     const rentals = await RentalTransaction.find(filter)
       .populate("customerId", "fullName phone")
+      .populate("staffUserId", "name")
       .sort({ dateOut: -1 });
     res.json(rentals);
   } catch (err) {
@@ -101,10 +104,15 @@ const getRentalById = async (req, res, next) => {
   try {
     const rental = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId })
       .populate("customerId", "fullName phone")
-      .populate("items.productId", "name");
+      .populate("items.productId", "name")
+      .populate("staffUserId", "name")
+      .populate("returnDetails.returnedBy", "name");
     if (!rental) return res.status(404).json({ message: "Rental not found" });
-    const deposits = await RentalDeposit.find({ transactionId: rental._id });
-    const payments = await Payment.find({ transactionId: rental._id }).sort({ date: 1 });
+    const deposits = await RentalDeposit.find({ transactionId: rental._id }).populate("createdBy", "name");
+    const payments = await Payment.find({ transactionId: rental._id })
+      .populate("paymentMethodId", "name")
+      .populate("recordedBy", "name")
+      .sort({ date: 1 });
     res.json({ transaction: rental, deposits, payments });
   } catch (err) {
     next(err);
@@ -113,7 +121,14 @@ const getRentalById = async (req, res, next) => {
 
 const returnRental = async (req, res, next) => {
   try {
-    const { itemsReturnedOk = [], itemsMissing = [], itemsDamaged = [], damageCosts = {}, refundPaymentMethodId } = req.body;
+    const {
+      itemsReturnedOk = [],
+      itemsMissing = [],
+      itemsDamaged = [],
+      damageCosts = {},
+      refundPaymentMethodId,
+      lateFee = 0
+    } = req.body;
 
     const transaction = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId });
     if (!transaction) return res.status(404).json({ message: "Rental not found" });
@@ -136,6 +151,10 @@ const returnRental = async (req, res, next) => {
     const depositRefunded = Math.max(0, cashDepositAlreadyPaid - costOfDamagedOrMissingItems);
     const damageDebt = Math.max(0, costOfDamagedOrMissingItems - cashDepositAlreadyPaid);
 
+    // Late fee is entirely optional — staff choose whether to charge it
+    // (overdue rental) or waive it by leaving it at 0.
+    const resolvedLateFee = Math.max(0, Number(lateFee) || 0);
+
     transaction.status = "returned";
     transaction.returnDetails = {
       returnDate: new Date(),
@@ -143,7 +162,9 @@ const returnRental = async (req, res, next) => {
       itemsMissing,
       itemsDamaged,
       depositRefunded,
-      damageDebt
+      damageDebt,
+      lateFee: resolvedLateFee,
+      returnedBy: req.user.id
     };
     await transaction.save();
 
@@ -174,10 +195,9 @@ const returnRental = async (req, res, next) => {
       });
     }
 
-    const populatedTransaction = await RentalTransaction.findById(transaction._id).populate(
-      "customerId",
-      "fullName phone"
-    );
+    const populatedTransaction = await RentalTransaction.findById(transaction._id)
+      .populate("customerId", "fullName phone")
+      .populate("returnDetails.returnedBy", "name");
 
     res.json({ transaction: populatedTransaction, refundPayment });
   } catch (err) {

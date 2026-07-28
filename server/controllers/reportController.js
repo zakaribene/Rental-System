@@ -67,4 +67,64 @@ const summary = async (req, res, next) => {
   }
 };
 
-module.exports = { dailyTotals, summary };
+const analytics = async (req, res, next) => {
+  try {
+    const storeId = new mongoose.Types.ObjectId(req.storeId);
+    const period = req.query.period === "week" ? "week" : "month";
+
+    const topProducts = await RentalTransaction.aggregate([
+      { $match: { storeId } },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.productId",
+          rentals: { $sum: "$items.quantity" },
+          revenue: { $sum: { $multiply: ["$items.unitRent", "$items.quantity"] } }
+        }
+      },
+      { $sort: { rentals: -1 } },
+      { $limit: 3 },
+      { $lookup: { from: "products", localField: "_id", foreignField: "_id", as: "product" } },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+      { $project: { _id: 1, rentals: 1, revenue: 1, name: "$product.name" } }
+    ]);
+
+    const topCustomers = await RentalTransaction.aggregate([
+      { $match: { storeId } },
+      { $group: { _id: "$customerId", revenue: { $sum: "$totalRentFee" }, rentals: { $sum: 1 } } },
+      { $sort: { revenue: -1 } },
+      { $limit: 3 },
+      { $lookup: { from: "customers", localField: "_id", foreignField: "_id", as: "customer" } },
+      { $unwind: { path: "$customer", preserveNullAndEmptyArrays: true } },
+      { $project: { _id: 1, revenue: 1, rentals: 1, fullName: "$customer.fullName" } }
+    ]);
+
+    const periods = period === "week" ? 8 : 6;
+    const since = new Date();
+    if (period === "week") since.setDate(since.getDate() - 7 * periods);
+    else since.setMonth(since.getMonth() - periods);
+    const dateFormat = period === "week" ? "%G-W%V" : "%Y-%m";
+
+    const trendRaw = await Payment.aggregate([
+      { $match: { storeId, date: { $gte: since } } },
+      {
+        $project: {
+          period: { $dateToString: { format: dateFormat, date: "$date" } },
+          signedAmount: { $cond: [{ $eq: ["$type", "REFUND"] }, { $multiply: ["$amount", -1] }, "$amount"] }
+        }
+      },
+      { $group: { _id: "$period", total: { $sum: "$signedAmount" } } },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({
+      topProducts,
+      topCustomers,
+      trend: trendRaw.map((t) => ({ period: t._id, total: t.total }))
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { dailyTotals, summary, analytics };

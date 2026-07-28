@@ -1,6 +1,9 @@
 import { api } from './client'
 
-export const listRentals = (status) => api.get('/rentals', { params: status ? { status } : {} }).then((r) => r.data)
+export const listRentals = (params) => {
+  const query = typeof params === 'string' ? (params ? { status: params } : {}) : params || {}
+  return api.get('/rentals', { params: query }).then((r) => r.data)
+}
 
 export const getRental = (id) => api.get(`/rentals/${id}`).then((r) => r.data)
 

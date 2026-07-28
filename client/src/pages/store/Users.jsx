@@ -3,6 +3,8 @@ import { Plus, UserCog, Phone, User, Lock } from 'lucide-react'
 import { listUsers, createUser, updateUser } from '../../api/users'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
+import Pagination from '../../components/ui/Pagination'
+import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
@@ -55,6 +57,8 @@ export default function StaffUsers() {
     load()
   }
 
+  const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(users, 10)
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
@@ -75,35 +79,38 @@ export default function StaffUsers() {
         ) : users.length === 0 ? (
           <EmptyState icon={UserCog} title="No staff members yet" />
         ) : (
-          <Table
-            columns={[
-              {
-                key: 'name',
-                header: 'Name',
-                render: (row) => (
-                  <div className="flex items-center gap-3">
-                    <Avatar name={row.name} size={32} />
-                    <span className="font-semibold text-ink-900 dark:text-white">{row.name}</span>
-                  </div>
-                ),
-              },
-              { key: 'phone', header: 'Phone' },
-              { key: 'role', header: 'Role', render: (row) => <Badge tone="primary">{row.role.replace('_', ' ')}</Badge> },
-              { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-              {
-                key: 'actions',
-                header: '',
-                headerClassName: 'text-right',
-                className: 'text-right',
-                render: (row) => (
-                  <Button size="sm" variant={row.status === 'active' ? 'ghost' : 'subtle'} onClick={() => toggleStatus(row)}>
-                    {row.status === 'active' ? 'Deactivate' : 'Activate'}
-                  </Button>
-                ),
-              },
-            ]}
-            data={users}
-          />
+          <>
+            <Table
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Name',
+                  render: (row) => (
+                    <div className="flex items-center gap-3">
+                      <Avatar name={row.name} size={32} />
+                      <span className="font-semibold text-ink-900 dark:text-white">{row.name}</span>
+                    </div>
+                  ),
+                },
+                { key: 'phone', header: 'Phone' },
+                { key: 'role', header: 'Role', render: (row) => <Badge tone="primary">{row.role.replace('_', ' ')}</Badge> },
+                { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                {
+                  key: 'actions',
+                  header: '',
+                  headerClassName: 'text-right',
+                  className: 'text-right',
+                  render: (row) => (
+                    <Button size="sm" variant={row.status === 'active' ? 'ghost' : 'subtle'} onClick={() => toggleStatus(row)}>
+                      {row.status === 'active' ? 'Deactivate' : 'Activate'}
+                    </Button>
+                  ),
+                },
+              ]}
+              data={pageItems}
+            />
+            <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onChange={setPage} />
+          </>
         )}
       </Card>
 

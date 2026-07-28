@@ -135,7 +135,10 @@ const getPayments = async (req, res, next) => {
       filter.transactionId = { $in: transactions.map((t) => t._id) };
     }
 
-    const payments = await Payment.find(filter).populate("customerId", "fullName phone").sort({ date: -1 });
+    const payments = await Payment.find(filter)
+      .populate("customerId", "fullName phone")
+      .populate("recordedBy", "name")
+      .sort({ date: -1 });
     res.json(payments);
   } catch (err) {
     next(err);

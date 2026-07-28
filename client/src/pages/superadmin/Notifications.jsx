@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Send, Megaphone, Building2, Globe } from 'lucide-react'
-import { sendNotification, listAllNotifications } from '../../api/notifications'
+import { Send, Megaphone, Building2, Globe, Pin, X } from 'lucide-react'
+import { sendNotification, listAllNotifications, closeBanner } from '../../api/notifications'
 import { listStores } from '../../api/stores'
 import Card, { CardHeader, CardBody } from '../../components/ui/Card'
+import Pagination from '../../components/ui/Pagination'
+import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import { Field, Select, Textarea } from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
@@ -16,9 +18,11 @@ export default function AdminNotifications() {
   const [loading, setLoading] = useState(true)
   const [targetStoreId, setTargetStoreId] = useState('all')
   const [message, setMessage] = useState('')
+  const [isBanner, setIsBanner] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  const [closingId, setClosingId] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -31,6 +35,8 @@ export default function AdminNotifications() {
     listStores().then(setStores)
     load()
   }, [])
+
+  const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(notifications, 10)
 
   const handleSend = async (e) => {
     e.preventDefault()
@@ -45,8 +51,10 @@ export default function AdminNotifications() {
       await sendNotification({
         message: message.trim(),
         targetStoreId: targetStoreId === 'all' ? null : targetStoreId,
+        isBanner,
       })
       setMessage('')
+      setIsBanner(false)
       setSent(true)
       load()
       setTimeout(() => setSent(false), 3000)
@@ -54,6 +62,16 @@ export default function AdminNotifications() {
       setError(apiErrorMessage(err, 'Failed to send notification'))
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleCloseBanner = async (id) => {
+    setClosingId(id)
+    try {
+      await closeBanner(id)
+      load()
+    } finally {
+      setClosingId('')
     }
   }
 
@@ -90,6 +108,24 @@ export default function AdminNotifications() {
                 />
               </Field>
 
+              <label className="flex items-start gap-2.5 rounded-lg border border-ink-200 p-3 text-sm dark:border-ink-700">
+                <input
+                  type="checkbox"
+                  checked={isBanner}
+                  onChange={(e) => setIsBanner(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-ink-300 text-primary-600 focus:ring-primary-400"
+                />
+                <span>
+                  <span className="flex items-center gap-1.5 font-medium text-ink-700 dark:text-ink-200">
+                    <Pin size={14} />
+                    Pin as a top banner
+                  </span>
+                  <span className="mt-0.5 block text-xs text-ink-400">
+                    Shows across the top of the store's system. Staff can dismiss it, but it comes back after 5 minutes until you close it here.
+                  </span>
+                </span>
+              </label>
+
               <Button type="submit" icon={Send} loading={sending} className="w-full">
                 Send notification
               </Button>
@@ -106,28 +142,45 @@ export default function AdminNotifications() {
           ) : notifications.length === 0 ? (
             <EmptyState icon={Megaphone} title="No notifications sent yet" />
           ) : (
-            <div className="divide-y divide-ink-100">
-              {notifications.map((n) => (
-                <div key={n._id} className="flex items-start gap-3 px-6 py-4">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
-                    {n.targetStoreId ? (
-                      <Building2 size={16} className="text-primary-600" />
-                    ) : (
-                      <Globe size={16} className="text-primary-600" />
+            <>
+              <div className="divide-y divide-ink-100">
+                {pageItems.map((n) => (
+                  <div key={n._id} className="flex items-start gap-3 px-6 py-4">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50">
+                      {n.targetStoreId ? (
+                        <Building2 size={16} className="text-primary-600" />
+                      ) : (
+                        <Globe size={16} className="text-primary-600" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={n.targetStoreId ? 'primary' : 'info'}>
+                          {n.targetStoreId ? n.targetStoreId.storeName : 'All stores'}
+                        </Badge>
+                        {n.isBanner && (
+                          <Badge tone={n.active ? 'warning' : 'neutral'}>{n.active ? 'Banner · active' : 'Banner · closed'}</Badge>
+                        )}
+                        <span className="text-xs text-ink-400">{formatDateTime(n.createdAt)}</span>
+                      </div>
+                      <p className="mt-1.5 text-sm text-ink-700">{n.message}</p>
+                    </div>
+                    {n.isBanner && n.active && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={X}
+                        loading={closingId === n._id}
+                        onClick={() => handleCloseBanner(n._id)}
+                      >
+                        Close
+                      </Button>
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Badge tone={n.targetStoreId ? 'primary' : 'info'}>
-                        {n.targetStoreId ? n.targetStoreId.storeName : 'All stores'}
-                      </Badge>
-                      <span className="text-xs text-ink-400">{formatDateTime(n.createdAt)}</span>
-                    </div>
-                    <p className="mt-1.5 text-sm text-ink-700">{n.message}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onChange={setPage} />
+            </>
           )}
         </Card>
       </div>

@@ -1,5 +1,5 @@
 const express = require("express");
-const { dailyTotals, summary } = require("../controllers/reportController");
+const { dailyTotals, summary, analytics } = require("../controllers/reportController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
@@ -50,5 +50,20 @@ router.get("/daily-totals", dailyTotals);
  *       200: { description: Summary grouped by payment method }
  */
 router.get("/summary", summary);
+
+/**
+ * @swagger
+ * /reports/analytics:
+ *   get:
+ *     tags: [Reports]
+ *     summary: Get top products, top customers and a revenue trend
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema: { type: string, enum: [week, month] }
+ *     responses:
+ *       200: { description: Analytics data }
+ */
+router.get("/analytics", analytics);
 
 module.exports = router;

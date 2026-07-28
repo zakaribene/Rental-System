@@ -1,18 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ClipboardList, Trash2, PackageCheck, Upload, ArrowUpCircle, ArrowDownCircle, FileText, Banknote } from 'lucide-react'
+import { Plus, ClipboardList, Trash2, PackageCheck, Upload, ArrowUpCircle, ArrowDownCircle, FileText, Banknote, Search, Printer, Download } from 'lucide-react'
 import { listRentals, createRental, getRental, returnRental, uploadDepositDocument } from '../../api/rentals'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
 import { listPaymentMethods } from '../../api/payments'
+import { getMyStore } from '../../api/myStore'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
+import Pagination from '../../components/ui/Pagination'
+import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
 import { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
-import { formatMoney, formatDate, formatDateTime } from '../../lib/utils'
+import RentalReceipt from '../../components/receipts/RentalReceipt'
+import { formatMoney, formatDateTime } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
+
+const DURATION_PRESETS = [
+  { label: '1 hour', hours: 1 },
+  { label: '6 hours', hours: 6 },
+  { label: '1 day', hours: 24 },
+  { label: '3 days', hours: 72 },
+  { label: '1 week', hours: 168 },
+]
+
+function computeDurationValue(hours) {
+  const d = new Date(Date.now() + hours * 60 * 60 * 1000)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 export default function Rentals() {
   const [rentals, setRentals] = useState([])
@@ -21,10 +39,12 @@ export default function Rentals() {
   const [methods, setMethods] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState('')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState(null)
+  const [store, setStore] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -39,6 +59,7 @@ export default function Rentals() {
     listCustomers().then(setCustomers)
     listProducts('available').then(setProducts)
     listPaymentMethods().then(setMethods).catch(() => setMethods([]))
+    getMyStore().then(setStore).catch(() => setStore(null))
   }, [])
 
   const openDetail = async (rental) => {
@@ -53,6 +74,14 @@ export default function Rentals() {
     listProducts('available').then(setProducts)
   }
 
+  const query = search.trim().toLowerCase()
+  const filteredRentals = query
+    ? rentals.filter(
+        (r) => r._id.toLowerCase().includes(query) || (r.customerId?.phone || '').toLowerCase().includes(query)
+      )
+    : rentals
+  const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(filteredRentals, 10)
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
@@ -65,14 +94,21 @@ export default function Rentals() {
         }
       />
 
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="returned">Returned</option>
           <option value="overdue">Overdue</option>
         </Select>
-        <span className="text-sm font-medium text-ink-400">{rentals.length} rental(s)</span>
+        <Input
+          icon={Search}
+          placeholder="Search by rental ID or customer number"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-72"
+        />
+        <span className="text-sm font-medium text-ink-400">{total} rental(s)</span>
       </div>
 
       <Card>
@@ -91,20 +127,26 @@ export default function Rentals() {
               </Button>
             }
           />
+        ) : filteredRentals.length === 0 ? (
+          <EmptyState icon={Search} title="No rentals match your search" />
         ) : (
-          <Table
-            onRowClick={openDetail}
-            columns={[
-              { key: 'id', header: 'Rental', render: (row) => <span className="font-mono text-xs text-ink-500">#{row._id.slice(-6)}</span> },
-              { key: 'customer', header: 'Customer', render: (row) => row.customerId?.fullName || '—' },
-              { key: 'items', header: 'Items', render: (row) => `${row.items?.length || 0} item(s)` },
-              { key: 'totalRentFee', header: 'Rent fee', render: (row) => formatMoney(row.totalRentFee) },
-              { key: 'dateOut', header: 'Date out', render: (row) => formatDate(row.dateOut) },
-              { key: 'expectedReturnDate', header: 'Due', render: (row) => formatDate(row.expectedReturnDate) },
-              { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-            ]}
-            data={rentals}
-          />
+          <>
+            <Table
+              onRowClick={openDetail}
+              columns={[
+                { key: 'id', header: 'Rental', render: (row) => <span className="font-mono text-xs text-ink-500">#{row._id.slice(-6)}</span> },
+                { key: 'customer', header: 'Customer', render: (row) => row.customerId?.fullName || '—' },
+                { key: 'phone', header: 'Phone', render: (row) => row.customerId?.phone || '—' },
+                { key: 'items', header: 'Items', render: (row) => `${row.items?.length || 0} item(s)` },
+                { key: 'totalRentFee', header: 'Rent fee', render: (row) => formatMoney(row.totalRentFee) },
+                { key: 'dateOut', header: 'Date out', render: (row) => formatDateTime(row.dateOut) },
+                { key: 'expectedReturnDate', header: 'Due', render: (row) => formatDateTime(row.expectedReturnDate) },
+                { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+              ]}
+              data={pageItems}
+            />
+            <Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onChange={setPage} />
+          </>
         )}
       </Card>
 
@@ -125,6 +167,7 @@ export default function Rentals() {
         onClose={() => setDetailOpen(false)}
         detail={detail}
         methods={methods}
+        store={store}
         onReturned={() => {
           setDetailOpen(false)
           afterMutate()
@@ -303,8 +346,20 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
           )}
         </div>
 
-        <Field label="Expected return date" hint="Optional">
-          <Input type="date" value={expectedReturnDate} onChange={(e) => setExpectedReturnDate(e.target.value)} />
+        <Field label="Expected return" hint="Optional — pick a quick duration or set an exact date & time">
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {DURATION_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => setExpectedReturnDate(computeDurationValue(preset.hours))}
+                className="rounded-full border border-ink-200 px-2.5 py-1 text-xs font-medium text-ink-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-primary-500/10"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <Input type="datetime-local" value={expectedReturnDate} onChange={(e) => setExpectedReturnDate(e.target.value)} />
         </Field>
 
         <div>
@@ -388,12 +443,14 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
   )
 }
 
-function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
+function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }) {
   const [selection, setSelection] = useState({})
   const [damageCosts, setDamageCosts] = useState({})
   const [refundMethodId, setRefundMethodId] = useState('')
+  const [lateFee, setLateFee] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
 
   useEffect(() => {
     if (detail?.transaction) {
@@ -404,6 +461,7 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
       })
       setSelection(initial)
       setDamageCosts({})
+      setLateFee('')
       setError('')
     }
   }, [detail])
@@ -411,6 +469,10 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
   if (!open) return null
 
   const transaction = detail?.transaction
+  const canReturn = transaction?.status === 'active' || transaction?.status === 'overdue'
+  const isOverdue =
+    transaction?.status === 'overdue' ||
+    (canReturn && transaction?.expectedReturnDate && new Date(transaction.expectedReturnDate) < new Date())
 
   const handleReturn = async (e) => {
     e.preventDefault()
@@ -433,12 +495,35 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
         itemsDamaged,
         damageCosts,
         refundPaymentMethodId: refundMethodId || undefined,
+        lateFee: isOverdue ? Number(lateFee) || 0 : 0,
       })
       onReturned()
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to process return'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePrint = () => window.print()
+
+  const handleDownloadPdf = async () => {
+    setPdfGenerating(true)
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
+      const node = document.getElementById('print-receipt')
+      const canvas = await html2canvas(node, { scale: 2 })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const imgWidth = pageWidth - 48
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      pdf.addImage(imgData, 'PNG', 24, 24, imgWidth, imgHeight)
+      pdf.save(`rental-${transaction._id.slice(-6)}.pdf`)
+    } catch {
+      setError('Failed to generate PDF')
+    } finally {
+      setPdfGenerating(false)
     }
   }
 
@@ -450,13 +535,21 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
       title={transaction ? `Rental #${transaction._id.slice(-6)}` : 'Rental'}
       subtitle={transaction ? `${transaction.customerId?.fullName || 'Customer'} · ${transaction.status}` : ''}
       footer={
-        transaction?.status === 'active' ? (
+        transaction ? (
           <>
+            <Button variant="secondary" icon={Printer} onClick={handlePrint}>
+              Print
+            </Button>
+            <Button variant="secondary" icon={Download} loading={pdfGenerating} onClick={handleDownloadPdf}>
+              PDF
+            </Button>
+            {canReturn && (
+              <Button form="return-form" type="submit" icon={PackageCheck} loading={saving}>
+                Process return
+              </Button>
+            )}
             <Button variant="secondary" onClick={onClose}>
               Close
-            </Button>
-            <Button form="return-form" type="submit" icon={PackageCheck} loading={saving}>
-              Process return
             </Button>
           </>
         ) : (
@@ -479,7 +572,7 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
             </div>
             <div>
               <p className="text-ink-400">Expected return</p>
-              <p className="font-semibold text-ink-800">{formatDate(transaction.expectedReturnDate)}</p>
+              <p className="font-semibold text-ink-800">{formatDateTime(transaction.expectedReturnDate)}</p>
             </div>
             <div>
               <p className="text-ink-400">Total rent fee</p>
@@ -495,15 +588,24 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
                 {formatMoney(transaction.remainingDebt)}
               </p>
             </div>
+            <div>
+              <p className="text-ink-400">Handled by</p>
+              <p className="font-semibold text-ink-800">{transaction.staffUserId?.name || '—'}</p>
+            </div>
           </div>
 
-          <DepositTicker deposits={detail.deposits} returnDetails={transaction.returnDetails} />
+          <DepositTicker deposits={detail.deposits} returnDetails={transaction.returnDetails} payments={detail.payments} />
 
-          <RentalHistory payments={detail.payments} deposits={detail.deposits} />
+          <RentalHistory payments={detail.payments} deposits={detail.deposits} returnDetails={transaction.returnDetails} />
 
-          {transaction.status === 'active' ? (
+          <RentalReceipt id="print-receipt" transaction={transaction} deposits={detail.deposits} payments={detail.payments} store={store} />
+
+          {canReturn ? (
             <form id="return-form" onSubmit={handleReturn} className="space-y-4">
               {error && <Alert>{error}</Alert>}
+              {isOverdue && (
+                <Alert tone="warning">This rental is overdue. You may optionally charge a late fee below, or leave it at 0 to waive it.</Alert>
+              )}
               <div>
                 <span className="mb-2 block text-sm font-medium text-ink-700">Items condition</span>
                 <div className="space-y-3">
@@ -555,6 +657,12 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
                   ))}
                 </Select>
               </Field>
+
+              {isOverdue && (
+                <Field label="Late fee" hint="Optional — leave empty or 0 to waive it">
+                  <Input type="number" min="0" step="0.01" placeholder="0" value={lateFee} onChange={(e) => setLateFee(e.target.value)} />
+                </Field>
+              )}
             </form>
           ) : (
             transaction.returnDetails && (
@@ -571,6 +679,12 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
                   <p className="text-ink-400">Returned</p>
                   <p className="font-semibold text-ink-800 dark:text-ink-100">{formatDateTime(transaction.returnDetails.returnDate)}</p>
                 </div>
+                {transaction.returnDetails.lateFee > 0 && (
+                  <div>
+                    <p className="text-ink-400">Late fee charged</p>
+                    <p className="font-semibold text-danger-600">{formatMoney(transaction.returnDetails.lateFee)}</p>
+                  </div>
+                )}
               </div>
             )
           )}
@@ -580,12 +694,17 @@ function RentalDetailModal({ open, onClose, detail, methods, onReturned }) {
   )
 }
 
-function DepositTicker({ deposits, returnDetails }) {
+function DepositTicker({ deposits, returnDetails, payments }) {
   const cashDeposits = (deposits || []).filter((d) => d.depositType === 'CASH')
   const totalCollected = cashDeposits.reduce((sum, d) => sum + (d.cashAmount || 0), 0)
   const documentDeposits = (deposits || []).filter((d) => d.depositType === 'DOCUMENT')
   const guarantorDeposits = (deposits || []).filter((d) => d.depositType === 'GUARANTOR')
   const refunded = returnDetails?.depositRefunded || 0
+
+  const methodNames = (type) =>
+    [...new Set((payments || []).filter((p) => p.type === type).map((p) => p.paymentMethodId?.name).filter(Boolean))].join(', ')
+  const receivedMethods = methodNames('DEPOSIT_COLLECTION')
+  const refundedMethods = methodNames('REFUND')
 
   if (!deposits || deposits.length === 0) return null
 
@@ -598,6 +717,7 @@ function DepositTicker({ deposits, returnDetails }) {
           <div>
             <p className="text-xs font-medium text-success-700">Received</p>
             <p className="font-display text-lg font-extrabold text-success-700">{formatMoney(totalCollected)}</p>
+            {receivedMethods && <p className="text-xs text-success-600">via {receivedMethods}</p>}
           </div>
         </div>
         <div className="flex items-center gap-3 rounded-lg bg-danger-50 px-3 py-2.5">
@@ -605,6 +725,7 @@ function DepositTicker({ deposits, returnDetails }) {
           <div>
             <p className="text-xs font-medium text-danger-700">Refunded</p>
             <p className="font-display text-lg font-extrabold text-danger-700">{formatMoney(refunded)}</p>
+            {refundedMethods && <p className="text-xs text-danger-600">via {refundedMethods}</p>}
           </div>
         </div>
       </div>
@@ -646,7 +767,7 @@ const historyEventStyle = {
   DEBT_SETTLEMENT: { icon: Banknote, tone: 'text-primary-600', bg: 'bg-primary-50', label: 'Rent payment' },
 }
 
-function RentalHistory({ payments, deposits }) {
+function RentalHistory({ payments, deposits, returnDetails }) {
   const nonCashDeposits = (deposits || []).filter((d) => d.depositType !== 'CASH')
   const events = [
     ...(payments || []).map((p) => ({
@@ -655,6 +776,8 @@ function RentalHistory({ payments, deposits }) {
       ...historyEventStyle[p.type],
       amount: p.amount,
       note: p.note,
+      methodName: p.paymentMethodId?.name,
+      staffName: p.recordedBy?.name,
     })),
     ...nonCashDeposits.map((d) => ({
       key: d._id,
@@ -664,7 +787,22 @@ function RentalHistory({ payments, deposits }) {
       bg: 'bg-ink-100',
       label: d.depositType === 'GUARANTOR' ? 'Guarantor held' : 'Document held',
       note: d.depositType === 'GUARANTOR' ? `${d.guarantorName || ''} ${d.guarantorPhone || ''}`.trim() : 'ID / passport as collateral',
+      staffName: d.createdBy?.name,
     })),
+    ...(returnDetails?.lateFee > 0
+      ? [
+          {
+            key: 'late-fee',
+            date: returnDetails.returnDate,
+            icon: Banknote,
+            tone: 'text-danger-600',
+            bg: 'bg-danger-50',
+            label: 'Late fee charged',
+            amount: returnDetails.lateFee,
+            staffName: returnDetails.returnedBy?.name,
+          },
+        ]
+      : []),
   ].sort((a, b) => new Date(a.date) - new Date(b.date))
 
   if (events.length === 0) return null
@@ -686,7 +824,21 @@ function RentalHistory({ payments, deposits }) {
                   {ev.amount !== undefined && <p className={`font-display text-sm font-bold ${ev.tone}`}>{formatMoney(ev.amount)}</p>}
                 </div>
                 {ev.note && <p className="mt-0.5 text-xs text-ink-500">{ev.note}</p>}
-                <p className="mt-0.5 text-xs text-ink-400">{formatDateTime(ev.date)}</p>
+                <p className="mt-0.5 text-xs text-ink-400">
+                  {formatDateTime(ev.date)}
+                  {ev.methodName && (
+                    <>
+                      {' '}
+                      · <span className="font-medium text-ink-500">{ev.methodName}</span>
+                    </>
+                  )}
+                  {ev.staffName && (
+                    <>
+                      {' '}
+                      · by <span className="font-medium text-ink-500">{ev.staffName}</span>
+                    </>
+                  )}
+                </p>
               </div>
             </div>
           )

@@ -1,5 +1,5 @@
 const express = require("express");
-const { createStore, getStores, getStoreById, updateStore } = require("../controllers/storeController");
+const { createStore, getStores, getStoreById, updateStore, getStoreAnalytics } = require("../controllers/storeController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 
@@ -35,6 +35,17 @@ router.use(authMiddleware, requireRole("SUPER_ADMIN"));
  */
 router.post("/", createStore);
 router.get("/", getStores);
+
+/**
+ * @swagger
+ * /stores/analytics:
+ *   get:
+ *     tags: [Stores]
+ *     summary: Get revenue and rental counts per store (SUPER_ADMIN only)
+ *     responses:
+ *       200: { description: Per-store analytics }
+ */
+router.get("/analytics", getStoreAnalytics);
 
 /**
  * @swagger
