@@ -24,7 +24,23 @@ startOverdueJob();
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN, credentials: true }));
+// CLIENT_ORIGIN supports a comma-separated list, so multiple deployed
+// frontends (e.g. a Render static site and a Vercel deployment) can hit this
+// backend at the same time without switching the env var back and forth.
+const allowedOrigins = (process.env.CLIENT_ORIGIN || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true
+  })
+);
 app.use(express.json());
 app.use(cookieParser());
 app.use("/uploads", express.static("uploads"));
