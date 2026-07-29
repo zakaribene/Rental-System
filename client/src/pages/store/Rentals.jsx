@@ -12,9 +12,8 @@ import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
-import { StatusBadge } from '../../components/ui/Badge'
+import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
-import RentalReceipt from '../../components/receipts/RentalReceipt'
 import { formatMoney, formatDateTime } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
 
@@ -192,6 +191,8 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const selectedCustomer = customers.find((c) => c._id === customerId)
+
   const reset = () => {
     setCustomerId('')
     setItems([{ productId: '', quantity: 1 }])
@@ -298,10 +299,19 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
             <option value="">Select a customer</option>
             {customers.map((c) => (
               <option key={c._id} value={c._id}>
+                {c.isRisky ? '⚠ ' : ''}
                 {c.fullName} · {c.phone}
               </option>
             ))}
           </Select>
+          {selectedCustomer?.isRisky && (
+            <div className="mt-2">
+              <Alert tone="warning">
+                Heads up — {selectedCustomer.fullName} has {selectedCustomer.lateReturns} late return(s) and{' '}
+                {selectedCustomer.damageIncidents} damage/missing incident(s) on record.
+              </Alert>
+            </div>
+          )}
         </Field>
 
         <div>
@@ -512,7 +522,30 @@ function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }
     try {
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
       const node = document.getElementById('print-receipt')
-      const canvas = await html2canvas(node, { scale: 2 })
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        onclone: (clonedDoc) => {
+          const header = clonedDoc.getElementById('print-only-header')
+          if (header) header.classList.remove('hidden')
+
+          // Match the print output: escape the modal card's own
+          // max-h-[90vh]/overflow-y-auto clipping so the full receipt
+          // renders, instead of whatever fit in the on-screen scroll area.
+          const receipt = clonedDoc.getElementById('print-receipt')
+          if (receipt) {
+            receipt.style.width = '760px'
+            receipt.style.maxHeight = 'none'
+            receipt.style.overflow = 'visible'
+            let ancestor = receipt.parentElement
+            while (ancestor) {
+              ancestor.style.maxHeight = 'none'
+              ancestor.style.height = 'auto'
+              ancestor.style.overflow = 'visible'
+              ancestor = ancestor.parentElement
+            }
+          }
+        },
+      })
       const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
       const pageWidth = pdf.internal.pageSize.getWidth()
@@ -564,7 +597,32 @@ function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }
           <Spinner size={26} />
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-5" id="print-receipt">
+          <div id="print-only-header" className="hidden items-start justify-between border-b-2 border-ink-800 pb-4 print:flex">
+            <div className="flex items-center gap-3">
+              {store?.logoUrl ? (
+                <img src={store.logoUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600">
+                  <span className="font-display text-lg font-extrabold text-white">
+                    {(store?.storeName || 'RS').slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+              )}
+              <div>
+                <p className="font-display text-lg font-extrabold text-ink-900">{store?.storeName || 'Rental System'}</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Rental Receipt</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="font-mono text-sm font-bold text-ink-900">#{transaction._id.slice(-6)}</p>
+              <p className="mt-0.5 text-sm font-semibold text-ink-800">{transaction.customerId?.fullName || 'Customer'}</p>
+              <p className="text-xs text-ink-400">
+                {transaction.status} · {formatDateTime(new Date())}
+              </p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-ink-400">Date out</p>
@@ -594,11 +652,11 @@ function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }
             </div>
           </div>
 
+          <RentedItems transaction={transaction} />
+
           <DepositTicker deposits={detail.deposits} returnDetails={transaction.returnDetails} payments={detail.payments} />
 
           <RentalHistory payments={detail.payments} deposits={detail.deposits} returnDetails={transaction.returnDetails} />
-
-          <RentalReceipt id="print-receipt" transaction={transaction} deposits={detail.deposits} payments={detail.payments} store={store} />
 
           {canReturn ? (
             <form id="return-form" onSubmit={handleReturn} className="space-y-4">
@@ -691,6 +749,49 @@ function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }
         </div>
       )}
     </Modal>
+  )
+}
+
+const itemConditionMeta = {
+  ok: { label: 'Returned OK', tone: 'success' },
+  damaged: { label: 'Damaged', tone: 'warning' },
+  missing: { label: 'Missing', tone: 'danger' },
+}
+
+function RentedItems({ transaction }) {
+  const { itemsDamaged = [], itemsMissing = [] } = transaction.returnDetails || {}
+
+  const conditionFor = (productId) => {
+    if (itemsDamaged.some((id) => (id?._id || id) === productId)) return 'damaged'
+    if (itemsMissing.some((id) => (id?._id || id) === productId)) return 'missing'
+    return transaction.status === 'returned' ? 'ok' : null
+  }
+
+  return (
+    <div className="rounded-xl border border-ink-100 bg-white p-4">
+      <p className="mb-3 text-sm font-semibold text-ink-700">Items</p>
+      <div className="space-y-2">
+        {transaction.items.map((it, i) => {
+          const product = it.productId
+          const productId = product?._id || product
+          const condition = conditionFor(productId)
+          return (
+            <div key={productId || i} className="flex items-center justify-between gap-3 rounded-lg border border-ink-100 p-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-ink-800">{product?.name || 'Item'}</p>
+                <p className="text-xs text-ink-400">
+                  Qty {it.quantity} · {formatMoney(it.unitRent)} each
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {condition && <Badge tone={itemConditionMeta[condition].tone}>{itemConditionMeta[condition].label}</Badge>}
+                <p className="font-semibold text-ink-800">{formatMoney(it.unitRent * it.quantity)}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

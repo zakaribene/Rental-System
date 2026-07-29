@@ -73,8 +73,18 @@ export function AuthProvider({ children }) {
     persistUser(null)
   }
 
+  // Used for super-admin "login as store" impersonation, and for restoring
+  // the admin's own session afterward. Deliberately memory-only (no
+  // persistUser call) — the real admin session stays intact in localStorage
+  // and the refresh-token cookie, so a page reload while impersonating just
+  // falls back to the real admin session instead of getting stuck.
+  const impersonate = (accessToken, impersonatedUser) => {
+    setAccessToken(accessToken)
+    setUser(impersonatedUser)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, initializing }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, login, logout, impersonate, initializing }}>{children}</AuthContext.Provider>
   )
 }
 

@@ -1,5 +1,13 @@
 const express = require("express");
-const { createStore, getStores, getStoreById, updateStore, getStoreAnalytics } = require("../controllers/storeController");
+const {
+  createStore,
+  getStores,
+  getStoreById,
+  updateStore,
+  getStoreAnalytics,
+  resetStorePassword,
+  impersonateStore
+} = require("../controllers/storeController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 
@@ -84,5 +92,48 @@ router.get("/analytics", getStoreAnalytics);
  */
 router.get("/:id", getStoreById);
 router.patch("/:id", updateStore);
+
+/**
+ * @swagger
+ * /stores/{id}/reset-password:
+ *   patch:
+ *     tags: [Stores]
+ *     summary: Reset a store owner's login password without needing the old one (SUPER_ADMIN only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password: { type: string }
+ *     responses:
+ *       200: { description: Password reset }
+ *       404: { description: Not found }
+ */
+router.patch("/:id/reset-password", resetStorePassword);
+
+/**
+ * @swagger
+ * /stores/{id}/impersonate:
+ *   post:
+ *     tags: [Stores]
+ *     summary: Log in as a store's owner without a password, for support purposes (SUPER_ADMIN only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Short-lived access token for the store owner }
+ *       404: { description: Not found }
+ */
+router.post("/:id/impersonate", impersonateStore);
 
 module.exports = router;

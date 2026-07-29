@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Users, Search, Phone, User, IdCard, Eye, Upload, Trash2, ClipboardList, Wallet, AlertTriangle, FileText } from 'lucide-react'
+import { Plus, Users, Search, Phone, User, IdCard, Eye, Upload, Trash2, ClipboardList, Wallet, AlertTriangle, FileText, ShieldAlert, Clock } from 'lucide-react'
 import { listCustomers, createCustomer, updateCustomer, uploadCustomerPhoto, uploadCustomerIdDocument } from '../../api/customers'
 import { listRentals } from '../../api/rentals'
 import Card from '../../components/ui/Card'
@@ -9,7 +9,7 @@ import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field } from '../../components/ui/Input'
-import { StatusBadge } from '../../components/ui/Badge'
+import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { Avatar, PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
 import { formatDate, formatDateTime, formatMoney } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
@@ -173,6 +173,19 @@ export default function Customers() {
                 },
                 { key: 'phone', header: 'Phone' },
                 { key: 'idDocumentNumber', header: 'ID document', render: (row) => row.idDocumentNumber || '—' },
+                {
+                  key: 'risk',
+                  header: 'Risk',
+                  render: (row) =>
+                    row.isRisky ? (
+                      <Badge tone="danger">
+                        <ShieldAlert size={11} />
+                        Risky
+                      </Badge>
+                    ) : (
+                      <span className="text-ink-300">—</span>
+                    ),
+                },
                 { key: 'createdAt', header: 'Added', render: (row) => formatDate(row.createdAt) },
                 {
                   key: 'actions',
@@ -333,6 +346,18 @@ function CustomerDetailModal({ customer, onClose }) {
   return (
     <Modal open={!!customer} onClose={onClose} size="lg" title={customer.fullName} subtitle="Customer overview">
       <div className="space-y-5">
+        {customer.isRisky && (
+          <Alert tone="danger">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <ShieldAlert size={14} />
+              Risky customer
+            </span>
+            <span className="mt-0.5 block font-normal">
+              {customer.lateReturns} late return(s) and {customer.damageIncidents} damage/missing incident(s) on record. Consider extra caution before renting again.
+            </span>
+          </Alert>
+        )}
+
         <div className="flex items-center gap-4">
           <Avatar name={customer.fullName} imageUrl={customer.photoUrl} size={56} />
           <div className="min-w-0 flex-1">
@@ -353,7 +378,7 @@ function CustomerDetailModal({ customer, onClose }) {
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
             <div className="flex items-center gap-1.5 text-ink-400">
               <ClipboardList size={14} />
@@ -368,6 +393,15 @@ function CustomerDetailModal({ customer, onClose }) {
             </div>
             <p className={`mt-1 font-display text-lg font-extrabold ${totalDebt > 0 ? 'text-danger-600' : 'text-ink-900 dark:text-white'}`}>
               {formatMoney(totalDebt)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
+            <div className="flex items-center gap-1.5 text-ink-400">
+              <Clock size={14} />
+              <p className="text-xs font-medium">Late returns</p>
+            </div>
+            <p className={`mt-1 font-display text-lg font-extrabold ${customer.lateReturns > 0 ? 'text-warning-600' : 'text-ink-900 dark:text-white'}`}>
+              {customer.lateReturns ?? 0}
             </p>
           </div>
           <div className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">

@@ -25,6 +25,27 @@ export function formatDateTime(date) {
   }).format(new Date(date))
 }
 
+const RELATIVE_UNITS = [
+  { limit: 60, divisor: 1, unit: 's' },
+  { limit: 3600, divisor: 60, unit: 'm' },
+  { limit: 86400, divisor: 3600, unit: 'h' },
+  { limit: 604800, divisor: 86400, unit: 'd' },
+  { limit: 2629800, divisor: 604800, unit: 'w' },
+  { limit: 31557600, divisor: 2629800, unit: 'mo' },
+  { limit: Infinity, divisor: 31557600, unit: 'y' },
+]
+
+// "just now" / "5m ago" / "3d ago" / "2y ago" ...
+export function formatRelativeTime(date) {
+  if (!date) return '—'
+  const seconds = Math.max(0, (Date.now() - new Date(date).getTime()) / 1000)
+  if (seconds < 45) return 'just now'
+
+  const { divisor, unit } = RELATIVE_UNITS.find((u) => seconds < u.limit)
+  const value = Math.round(seconds / divisor)
+  return `${value}${unit} ago`
+}
+
 export function initials(name = '') {
   return name
     .split(' ')

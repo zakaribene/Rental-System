@@ -3,6 +3,12 @@ const Store = require("../models/Store");
 const User = require("../models/User");
 const Payment = require("../models/Payment");
 const RentalTransaction = require("../models/RentalTransaction");
+const ImpersonationLog = require("../models/ImpersonationLog");
+const { generateAccessToken } = require("../utils/tokenUtils");
+
+// A store owner is considered "online" if their last authenticated request
+// was within this window (matches the touch interval in authMiddleware).
+const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 const createStore = async (req, res, next) => {
   try {
@@ -36,8 +42,24 @@ const createStore = async (req, res, next) => {
 
 const getStores = async (req, res, next) => {
   try {
-    const stores = await Store.find().sort({ createdAt: -1 });
-    res.json(stores);
+    const stores = await Store.find().sort({ createdAt: -1 }).lean();
+    const owners = await User.find({ role: "STORE_OWNER", storeId: { $in: stores.map((s) => s._id) } }).select(
+      "storeId lastLoginAt lastActiveAt"
+    );
+    const ownerMap = new Map(owners.map((o) => [o.storeId.toString(), o]));
+    const now = Date.now();
+
+    const withOwnerInfo = stores.map((s) => {
+      const owner = ownerMap.get(s._id.toString());
+      return {
+        ...s,
+        lastLoginAt: owner?.lastLoginAt || null,
+        lastActiveAt: owner?.lastActiveAt || null,
+        isOnline: !!(owner?.lastActiveAt && now - new Date(owner.lastActiveAt).getTime() < ONLINE_WINDOW_MS)
+      };
+    });
+
+    res.json(withOwnerInfo);
   } catch (err) {
     next(err);
   }
@@ -63,6 +85,72 @@ const updateStore = async (req, res, next) => {
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const resetStorePassword = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "password is required and must be at least 6 characters" });
+    }
+
+    const store = await Store.findById(req.params.id);
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    store.passwordHash = passwordHash;
+    await store.save();
+
+    // Reset the owner's own login too (this is what login actually checks),
+    // and clear their refresh token so any existing session is force-logged-out.
+    await User.findOneAndUpdate(
+      { storeId: store._id, role: "STORE_OWNER" },
+      { passwordHash, refreshToken: null }
+    );
+
+    res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const impersonateStore = async (req, res, next) => {
+  try {
+    const store = await Store.findById(req.params.id);
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    const owner = await User.findOne({ storeId: store._id, role: "STORE_OWNER" });
+    if (!owner) return res.status(404).json({ message: "Store owner account not found" });
+    if (owner.status !== "active") {
+      return res.status(409).json({ message: "This store owner's account is inactive" });
+    }
+
+    // Access-token-only session — deliberately no refresh token is issued
+    // and the admin's own refresh cookie is left untouched, so this view
+    // naturally expires back to the admin session (ACCESS_TOKEN_EXPIRY) even
+    // if they never click "Return to admin".
+    const accessToken = generateAccessToken(owner);
+
+    await ImpersonationLog.create({
+      adminId: req.user.id,
+      storeId: store._id,
+      targetUserId: owner._id
+    });
+
+    res.json({
+      accessToken,
+      user: {
+        id: owner._id,
+        name: owner.name,
+        phone: owner.phone,
+        role: owner.role,
+        storeId: owner.storeId
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -104,4 +192,12 @@ const getStoreAnalytics = async (req, res, next) => {
   }
 };
 
-module.exports = { createStore, getStores, getStoreById, updateStore, getStoreAnalytics };
+module.exports = {
+  createStore,
+  getStores,
+  getStoreById,
+  updateStore,
+  getStoreAnalytics,
+  resetStorePassword,
+  impersonateStore
+};

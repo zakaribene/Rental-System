@@ -8,6 +8,8 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ["SUPER_ADMIN", "STORE_OWNER", "STORE_STAFF"], required: true },
   refreshToken: { type: String, default: null },
   status: { type: String, enum: ["active", "inactive"], default: "active" },
+  lastLoginAt: { type: Date, default: null },
+  lastActiveAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

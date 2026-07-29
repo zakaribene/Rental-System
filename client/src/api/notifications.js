@@ -13,3 +13,7 @@ export const markAllRead = () => api.post('/notifications/mark-read').then((r) =
 export const getActiveBanner = () => api.get('/notifications/active-banner').then((r) => r.data)
 
 export const closeBanner = (id) => api.patch(`/notifications/${id}/close`).then((r) => r.data)
+
+export const deleteNotification = (id) => api.delete(`/notifications/${id}`).then((r) => r.data)
+
+export const deleteAllNotifications = () => api.delete('/notifications/admin').then((r) => r.data)

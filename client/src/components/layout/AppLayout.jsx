@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import AnnouncementBanner from './AnnouncementBanner'
+import ImpersonationBar from './ImpersonationBar'
 import { useAuth } from '../../context/AuthContext'
 
 const titles = {
@@ -31,6 +32,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
+      {isStoreUser && <ImpersonationBar />}
       {isStoreUser && <AnnouncementBanner />}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="md:pl-64">

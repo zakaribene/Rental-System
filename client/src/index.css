@@ -79,10 +79,20 @@ body {
   #print-receipt * {
     visibility: visible;
   }
+  /* `fixed` (not `absolute`) so it escapes the modal card's own positioning
+     context and its `max-h-[90vh] overflow-y-auto` clipping entirely —
+     otherwise it prints positioned inside the (still invisible-but-laid-out)
+     modal card and gets cut off after one viewport's worth of content. */
   #print-receipt {
-    position: absolute !important;
+    position: fixed !important;
     top: 0 !important;
     left: 0 !important;
-    width: 100% !important;
+    right: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 24px !important;
   }
 }

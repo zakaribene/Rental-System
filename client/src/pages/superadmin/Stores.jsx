@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Plus, Building2, Search, Phone, User, Lock, Store as StoreIcon } from 'lucide-react'
-import { listStores, createStore, updateStore } from '../../api/stores'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Building2, Search, Phone, User, Lock, Store as StoreIcon, KeyRound, LogIn } from 'lucide-react'
+import { listStores, createStore, updateStore, resetStorePassword, impersonateStore } from '../../api/stores'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Pagination from '../../components/ui/Pagination'
@@ -8,14 +9,19 @@ import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field } from '../../components/ui/Input'
-import { StatusBadge } from '../../components/ui/Badge'
+import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
-import { formatDate } from '../../lib/utils'
-import { apiErrorMessage } from '../../api/client'
+import { formatDate, formatRelativeTime } from '../../lib/utils'
+import { apiErrorMessage, getAccessToken } from '../../api/client'
+import { useAuth } from '../../context/AuthContext'
+import { stashAdminSession } from '../../components/layout/ImpersonationBar'
 
 const emptyForm = { storeName: '', ownerName: '', ownerPhone: '', password: '' }
+const LIVE_REFRESH_INTERVAL = 20000
 
 export default function Stores() {
+  const navigate = useNavigate()
+  const { user: adminUser, impersonate } = useAuth()
   const [stores, setStores] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -24,15 +30,36 @@ export default function Stores() {
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [resetTarget, setResetTarget] = useState(null)
+  const [impersonatingId, setImpersonatingId] = useState('')
 
-  const load = () => {
-    setLoading(true)
+  const load = (silent) => {
+    if (!silent) setLoading(true)
     listStores()
       .then(setStores)
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    load()
+    // Keep "Online" status feeling live without a full page refresh.
+    const interval = setInterval(() => load(true), LIVE_REFRESH_INTERVAL)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleImpersonate = async (store) => {
+    setImpersonatingId(store._id)
+    try {
+      const { accessToken, user: storeUser } = await impersonateStore(store._id)
+      stashAdminSession(getAccessToken(), adminUser, store.storeName, storeUser.name)
+      impersonate(accessToken, storeUser)
+      navigate('/store')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to log in as this store'))
+    } finally {
+      setImpersonatingId('')
+    }
+  }
 
   const filtered = stores.filter((s) =>
     [s.storeName, s.ownerName, s.ownerPhone].some((v) => v?.toLowerCase().includes(search.toLowerCase()))
@@ -89,6 +116,12 @@ export default function Stores() {
         }
       />
 
+      {error && !modalOpen && !resetTarget && (
+        <div className="mb-5">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+
       <Card>
         <div className="flex items-center justify-between gap-4 border-b border-ink-100 px-6 py-4">
           <div className="relative w-full max-w-xs">
@@ -137,6 +170,26 @@ export default function Stores() {
                 { key: 'ownerName', header: 'Owner' },
                 { key: 'ownerPhone', header: 'Phone' },
                 { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                {
+                  key: 'lastLogin',
+                  header: 'Last login',
+                  render: (row) => {
+                    // Prefer lastActiveAt ("last seen") — it's touched on every
+                    // request, so it reflects how long ago they actually
+                    // stopped using the system (e.g. logged out), not just
+                    // when they last typed their password in.
+                    const lastSeen = row.lastActiveAt || row.lastLoginAt
+                    return row.isOnline ? (
+                      <Badge tone="success" dot>
+                        Online now
+                      </Badge>
+                    ) : lastSeen ? (
+                      <span className="text-ink-500">{formatRelativeTime(lastSeen)}</span>
+                    ) : (
+                      <span className="text-ink-300">Never</span>
+                    )
+                  },
+                },
                 { key: 'createdAt', header: 'Joined', render: (row) => formatDate(row.createdAt) },
                 {
                   key: 'actions',
@@ -145,8 +198,20 @@ export default function Stores() {
                   className: 'text-right',
                   render: (row) => (
                     <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={LogIn}
+                        loading={impersonatingId === row._id}
+                        onClick={() => handleImpersonate(row)}
+                      >
+                        Login as store
+                      </Button>
                       <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
                         Edit
+                      </Button>
+                      <Button size="sm" variant="secondary" icon={KeyRound} onClick={() => setResetTarget(row)}>
+                        Reset password
                       </Button>
                       <Button
                         size="sm"
@@ -230,6 +295,92 @@ export default function Stores() {
           )}
         </form>
       </Modal>
+
+      <ResetPasswordModal store={resetTarget} onClose={() => setResetTarget(null)} />
     </div>
+  )
+}
+
+function ResetPasswordModal({ store, onClose }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    if (store) {
+      setPassword('')
+      setError('')
+      setDone(false)
+    }
+  }, [store])
+
+  if (!store) return null
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    setSaving(true)
+    try {
+      await resetStorePassword(store._id, password)
+      setDone(true)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to reset password'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={!!store}
+      onClose={onClose}
+      title="Reset password"
+      subtitle={`${store.ownerName} · ${store.storeName}`}
+      footer={
+        done ? (
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button form="reset-password-form" type="submit" loading={saving}>
+              Reset password
+            </Button>
+          </>
+        )
+      }
+    >
+      {done ? (
+        <Alert tone="success">
+          Password reset. Share the new password with {store.ownerName} — they'll need to log in again with it.
+        </Alert>
+      ) : (
+        <form id="reset-password-form" onSubmit={handleSubmit} className="space-y-4">
+          {error && <Alert>{error}</Alert>}
+          <Alert tone="warning">
+            This immediately replaces the owner's current password — no need to know the old one. Their existing session
+            will be logged out.
+          </Alert>
+          <Field label="New password" required>
+            <Input
+              icon={Lock}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Set a new password"
+              required
+            />
+          </Field>
+        </form>
+      )}
+    </Modal>
   )
 }

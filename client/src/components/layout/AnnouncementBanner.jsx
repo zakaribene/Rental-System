@@ -2,12 +2,24 @@ import { useEffect, useState } from 'react'
 import { BellRing, X } from 'lucide-react'
 import { getActiveBanner } from '../../api/notifications'
 
-const POLL_INTERVAL = 30000
+const POLL_INTERVAL = 5000
 const DISMISS_DURATION = 5 * 60 * 1000
+const DEFAULT_COLOR = '#6c4fff'
 
 function isDismissed(id) {
   const until = Number(localStorage.getItem(`banner-dismiss-${id}`) || 0)
   return Date.now() < until
+}
+
+// Lighten/darken a hex color by `percent` (-100 to 100) to build a gradient
+// out of whatever single color the super admin picked.
+function shadeColor(hex, percent) {
+  const num = parseInt(hex.replace('#', ''), 16)
+  const amt = Math.round(2.55 * percent)
+  const r = Math.min(255, Math.max(0, (num >> 16) + amt))
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00ff) + amt))
+  const b = Math.min(255, Math.max(0, (num & 0x0000ff) + amt))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 export default function AnnouncementBanner() {
@@ -38,8 +50,13 @@ export default function AnnouncementBanner() {
 
   if (!banner || !banner.message || dismissed) return null
 
+  const baseColor = banner.bannerColor || DEFAULT_COLOR
+
   return (
-    <div className="relative isolate z-30 overflow-hidden bg-gradient-to-r from-primary-700 via-primary-600 to-primary-500 shadow-lg">
+    <div
+      className="relative isolate z-30 overflow-hidden shadow-lg"
+      style={{ background: `linear-gradient(to right, ${shadeColor(baseColor, -15)}, ${baseColor}, ${shadeColor(baseColor, 12)})` }}
+    >
       <div
         className="pointer-events-none absolute inset-0 opacity-20"
         style={{

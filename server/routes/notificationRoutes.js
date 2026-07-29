@@ -6,7 +6,9 @@ const {
   getUnreadCount,
   markAllRead,
   getActiveBanner,
-  closeBanner
+  closeBanner,
+  deleteNotification,
+  deleteAllNotifications
 } = require("../controllers/notificationController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
@@ -42,7 +44,9 @@ router.use(authMiddleware);
  */
 router.post("/", requireRole("SUPER_ADMIN"), sendNotification);
 router.get("/admin", requireRole("SUPER_ADMIN"), listAllNotifications);
+router.delete("/admin", requireRole("SUPER_ADMIN"), deleteAllNotifications);
 router.patch("/:id/close", requireRole("SUPER_ADMIN"), closeBanner);
+router.delete("/:id", requireRole("SUPER_ADMIN"), deleteNotification);
 
 router.get("/", requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, listStoreNotifications);
 router.get("/unread-count", requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, getUnreadCount);

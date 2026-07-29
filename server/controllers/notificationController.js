@@ -3,7 +3,7 @@ const Store = require("../models/Store");
 
 const sendNotification = async (req, res, next) => {
   try {
-    const { message, targetStoreId, isBanner } = req.body;
+    const { message, targetStoreId, isBanner, bannerColor } = req.body;
     if (!message) {
       return res.status(400).json({ message: "message is required" });
     }
@@ -11,7 +11,8 @@ const sendNotification = async (req, res, next) => {
       message,
       targetStoreId: targetStoreId || null,
       createdBy: req.user.id,
-      isBanner: !!isBanner
+      isBanner: !!isBanner,
+      bannerColor: isBanner ? bannerColor || undefined : undefined
     });
     res.status(201).json(notification);
   } catch (err) {
@@ -93,6 +94,25 @@ const closeBanner = async (req, res, next) => {
   }
 };
 
+const deleteNotification = async (req, res, next) => {
+  try {
+    const notification = await Notification.findByIdAndDelete(req.params.id);
+    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    res.json({ message: "Notification deleted" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteAllNotifications = async (req, res, next) => {
+  try {
+    await Notification.deleteMany({});
+    res.json({ message: "All notifications deleted" });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   sendNotification,
   listAllNotifications,
@@ -100,5 +120,7 @@ module.exports = {
   getUnreadCount,
   markAllRead,
   getActiveBanner,
-  closeBanner
+  closeBanner,
+  deleteNotification,
+  deleteAllNotifications
 };

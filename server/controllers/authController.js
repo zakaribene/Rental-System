@@ -31,6 +31,8 @@ const login = async (req, res, next) => {
     const refreshToken = generateRefreshToken(user);
 
     user.refreshToken = refreshToken;
+    user.lastLoginAt = new Date();
+    user.lastActiveAt = new Date();
     await user.save();
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
