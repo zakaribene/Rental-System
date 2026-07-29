@@ -81,8 +81,7 @@ const uploadProductImage = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "No image file provided" });
   }
-  const url = `${req.protocol}://${req.get("host")}/uploads/products/${req.file.filename}`;
-  res.status(201).json({ url });
+  res.status(201).json({ url: req.file.path });
 };
 
 module.exports = { createProduct, getProducts, getProductById, updateProduct, deleteProduct, uploadProductImage };

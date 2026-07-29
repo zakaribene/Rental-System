@@ -28,8 +28,7 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  */
 router.post("/upload-document", uploadDocument.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No image file provided" });
-  const url = `${req.protocol}://${req.get("host")}/uploads/documents/${req.file.filename}`;
-  res.status(201).json({ url });
+  res.status(201).json({ url: req.file.path });
 });
 
 /**

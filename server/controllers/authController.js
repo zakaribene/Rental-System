@@ -3,10 +3,14 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { generateAccessToken, generateRefreshToken } = require("../utils/tokenUtils");
 
+// In production the frontend (Vercel) and backend (Render) live on different
+// domains, so the refresh cookie must be sent cross-site — that requires
+// SameSite=None, which browsers only allow alongside Secure. Locally
+// everything is same-site (localhost), so Lax is fine and doesn't need HTTPS.
 const refreshCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   maxAge: 30 * 24 * 60 * 60 * 1000
 };
 

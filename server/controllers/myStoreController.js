@@ -13,7 +13,7 @@ const getMyStore = async (req, res, next) => {
 const uploadMyStoreLogo = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No image file provided" });
-    const url = `${req.protocol}://${req.get("host")}/uploads/logos/${req.file.filename}`;
+    const url = req.file.path;
     const store = await Store.findByIdAndUpdate(req.storeId, { logoUrl: url }, { new: true }).select(
       "storeName ownerName status logoUrl createdAt"
     );
