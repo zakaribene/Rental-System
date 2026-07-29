@@ -14,17 +14,37 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [waking, setWaking] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      const user = await login(phone, password)
+      let user
+      try {
+        user = await login(phone, password)
+      } catch (err) {
+        // Render's free tier spins the backend down after inactivity, so the first
+        // request from a fresh visitor can fail with a plain network error while it
+        // wakes up. Retry once after a short wait instead of showing a false failure.
+        if (!err.response) {
+          setWaking(true)
+          await new Promise((resolve) => setTimeout(resolve, 8000))
+          user = await login(phone, password)
+        } else {
+          throw err
+        }
+      }
       navigate(user.role === 'SUPER_ADMIN' ? '/admin' : '/store', { replace: true })
     } catch (err) {
-      setError(apiErrorMessage(err, 'Invalid phone or password'))
+      setError(
+        !err.response
+          ? 'Server-ku ma jawaabin. Fadlan sug daqiiqad kadibna isku day mar kale.'
+          : apiErrorMessage(err, 'Invalid phone or password')
+      )
     } finally {
+      setWaking(false)
       setLoading(false)
     }
   }
@@ -62,6 +82,9 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <Alert>{error}</Alert>}
+            {waking && (
+              <Alert tone="info">Server-ku wuu soo baraarugayaa, fadlan sug ilaa 10 sekan...</Alert>
+            )}
 
             <Field label="Phone number" required>
               <Input
