@@ -4,6 +4,9 @@ const {
   getStores,
   getStoreById,
   updateStore,
+  updateSubscription,
+  grantGracePeriod,
+  clearGracePeriod,
   getStoreAnalytics,
   resetStorePassword,
   impersonateStore
@@ -118,6 +121,76 @@ router.patch("/:id", updateStore);
  *       404: { description: Not found }
  */
 router.patch("/:id/reset-password", resetStorePassword);
+
+/**
+ * @swagger
+ * /stores/{id}/subscription:
+ *   patch:
+ *     tags: [Stores]
+ *     summary: Renew a store's subscription after payment (SUPER_ADMIN only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [subscriptionEndsAt]
+ *             properties:
+ *               subscriptionEndsAt: { type: string, format: date-time }
+ *     responses:
+ *       200: { description: Updated store }
+ *       404: { description: Not found }
+ */
+router.patch("/:id/subscription", updateSubscription);
+
+/**
+ * @swagger
+ * /stores/{id}/grace-period:
+ *   post:
+ *     tags: [Stores]
+ *     summary: Grant/extend a grace period, or reactivate a deactivated store (SUPER_ADMIN only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [days]
+ *             properties:
+ *               days: { type: number }
+ *               bannerColor: { type: string }
+ *     responses:
+ *       200: { description: Updated store }
+ *       404: { description: Not found }
+ */
+router.post("/:id/grace-period", grantGracePeriod);
+
+/**
+ * @swagger
+ * /stores/{id}/grace-period:
+ *   delete:
+ *     tags: [Stores]
+ *     summary: Clear an active grace period once payment is received (SUPER_ADMIN only)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Updated store }
+ *       404: { description: Not found }
+ */
+router.delete("/:id/grace-period", clearGracePeriod);
 
 /**
  * @swagger

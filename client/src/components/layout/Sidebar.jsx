@@ -10,6 +10,7 @@ import {
   UserCog,
   Sparkles,
   Megaphone,
+  CalendarClock,
   X,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
@@ -18,6 +19,7 @@ import { useAuth } from '../../context/AuthContext'
 const superAdminNav = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/stores', label: 'Stores', icon: Building2 },
+  { to: '/admin/subscriptions', label: 'Subscriptions', icon: CalendarClock },
   { to: '/admin/notifications', label: 'Notifications', icon: Megaphone },
 ]
 

@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Store = require("../models/Store");
 const { generateAccessToken, generateRefreshToken } = require("../utils/tokenUtils");
 
 // In production the frontend (Vercel) and backend (Render) live on different
@@ -29,6 +30,16 @@ const login = async (req, res, next) => {
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    if (user.storeId) {
+      const store = await Store.findById(user.storeId).select("status");
+      if (!store || store.status !== "active") {
+        return res.status(403).json({
+          code: "STORE_DEACTIVATED",
+          message: "Subscription-kaagu wuu dhammaaday. Fadlan la xiriir maamulaha si adeeggaagu u sii shaqeeyo."
+        });
+      }
     }
 
     const accessToken = generateAccessToken(user);

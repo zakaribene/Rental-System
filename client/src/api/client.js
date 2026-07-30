@@ -38,6 +38,12 @@ api.interceptors.response.use(
     const status = error.response?.status
     const url = original?.url || ''
 
+    if (error.response?.data?.code === 'STORE_DEACTIVATED') {
+      setAccessToken(null)
+      if (onUnauthorized) onUnauthorized()
+      return Promise.reject(error)
+    }
+
     if (status === 401 && !original._retry && !url.includes('/auth/login') && !url.includes('/auth/refresh-token')) {
       original._retry = true
       try {

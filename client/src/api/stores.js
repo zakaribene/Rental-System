@@ -13,3 +13,11 @@ export const getStoreAnalytics = () => api.get('/stores/analytics').then((r) => 
 export const resetStorePassword = (id, password) => api.patch(`/stores/${id}/reset-password`, { password }).then((r) => r.data)
 
 export const impersonateStore = (id) => api.post(`/stores/${id}/impersonate`).then((r) => r.data)
+
+export const updateSubscription = (id, subscriptionEndsAt) =>
+  api.patch(`/stores/${id}/subscription`, { subscriptionEndsAt }).then((r) => r.data)
+
+export const grantGracePeriod = (id, days, bannerColor, message) =>
+  api.post(`/stores/${id}/grace-period`, { days, bannerColor, message }).then((r) => r.data)
+
+export const clearGracePeriod = (id) => api.delete(`/stores/${id}/grace-period`).then((r) => r.data)

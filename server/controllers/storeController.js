@@ -156,6 +156,85 @@ const impersonateStore = async (req, res, next) => {
   }
 };
 
+const updateSubscription = async (req, res, next) => {
+  try {
+    const { subscriptionEndsAt } = req.body;
+    if (!subscriptionEndsAt) {
+      return res.status(400).json({ message: "subscriptionEndsAt is required" });
+    }
+    const store = await Store.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          subscriptionEndsAt: new Date(subscriptionEndsAt),
+          subscriptionStatus: "active",
+          gracePeriodEndsAt: null,
+          graceDays: null,
+          graceMessage: null,
+          deactivatedAt: null,
+          status: "active"
+        }
+      },
+      { new: true }
+    );
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json(store);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const grantGracePeriod = async (req, res, next) => {
+  try {
+    const { days, bannerColor, message } = req.body;
+    const numDays = Number(days);
+    if (!numDays || numDays <= 0) {
+      return res.status(400).json({ message: "days must be a positive number" });
+    }
+    const now = new Date();
+    const store = await Store.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          subscriptionStatus: "grace",
+          gracePeriodEndsAt: new Date(now.getTime() + numDays * 24 * 60 * 60 * 1000),
+          graceDays: numDays,
+          status: "active",
+          deactivatedAt: null,
+          ...(bannerColor && { graceBannerColor: bannerColor }),
+          graceMessage: message || null
+        }
+      },
+      { new: true }
+    );
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json(store);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const clearGracePeriod = async (req, res, next) => {
+  try {
+    const store = await Store.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          subscriptionStatus: "active",
+          gracePeriodEndsAt: null,
+          graceDays: null,
+          graceMessage: null
+        }
+      },
+      { new: true }
+    );
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json(store);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getStoreAnalytics = async (req, res, next) => {
   try {
     const stores = await Store.find().select("storeName status createdAt");
@@ -197,6 +276,9 @@ module.exports = {
   getStores,
   getStoreById,
   updateStore,
+  updateSubscription,
+  grantGracePeriod,
+  clearGracePeriod,
   getStoreAnalytics,
   resetStorePassword,
   impersonateStore

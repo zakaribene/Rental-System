@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import SuperAdminDashboard from './pages/superadmin/Dashboard'
 import Stores from './pages/superadmin/Stores'
 import AdminNotifications from './pages/superadmin/Notifications'
+import Subscriptions from './pages/superadmin/Subscriptions'
 import StoreDashboard from './pages/store/Dashboard'
 import Products from './pages/store/Products'
 import Customers from './pages/store/Customers'
@@ -41,6 +42,7 @@ export default function App() {
                   <Route path="/admin" element={<SuperAdminDashboard />} handle={{ title: 'Overview' }} />
                   <Route path="/admin/stores" element={<Stores />} handle={{ title: 'Stores' }} />
                   <Route path="/admin/notifications" element={<AdminNotifications />} handle={{ title: 'Notifications' }} />
+                  <Route path="/admin/subscriptions" element={<Subscriptions />} handle={{ title: 'Subscriptions' }} />
                 </Route>
               </Route>
 
