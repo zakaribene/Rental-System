@@ -2,16 +2,33 @@ const Product = require("../models/Product");
 
 const createProduct = async (req, res, next) => {
   try {
-    const { name, category, rentPrice, depositPrice, imageUrl, plateNumber } = req.body;
-    if (!name || rentPrice === undefined) {
-      return res.status(400).json({ message: "name and rentPrice are required" });
+    const { name, category, listingType, rentPrice, depositPrice, salePrice, stockQty, imageUrl, plateNumber } =
+      req.body;
+    if (!name) {
+      return res.status(400).json({ message: "name is required" });
     }
+
+    const type = listingType === "SALE" ? "SALE" : "RENT";
+    if (type === "SALE") {
+      if (!req.storeFeatures?.salesEnabled) {
+        return res.status(403).json({ code: "FEATURE_DISABLED", message: "Sales ma shaqeynayo dukaankan." });
+      }
+      if (salePrice === undefined || stockQty === undefined) {
+        return res.status(400).json({ message: "salePrice and stockQty are required for a sale product" });
+      }
+    } else if (rentPrice === undefined) {
+      return res.status(400).json({ message: "rentPrice is required for a rent product" });
+    }
+
     const product = await Product.create({
       storeId: req.storeId,
       name,
       category,
+      listingType: type,
       rentPrice,
       depositPrice,
+      salePrice,
+      stockQty: type === "SALE" ? stockQty : 0,
       imageUrl,
       plateNumber
     });
@@ -44,15 +61,24 @@ const getProductById = async (req, res, next) => {
 
 const updateProduct = async (req, res, next) => {
   try {
-    const { name, category, rentPrice, depositPrice, imageUrl, plateNumber, status } = req.body;
+    const { name, category, listingType, rentPrice, depositPrice, salePrice, stockQty, imageUrl, plateNumber, status } =
+      req.body;
+
+    if (listingType === "SALE" && !req.storeFeatures?.salesEnabled) {
+      return res.status(403).json({ code: "FEATURE_DISABLED", message: "Sales ma shaqeynayo dukaankan." });
+    }
+
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, storeId: req.storeId },
       {
         $set: {
           ...(name && { name }),
           ...(category && { category }),
+          ...(listingType && { listingType }),
           ...(rentPrice !== undefined && { rentPrice }),
           ...(depositPrice !== undefined && { depositPrice }),
+          ...(salePrice !== undefined && { salePrice }),
+          ...(stockQty !== undefined && { stockQty }),
           ...(imageUrl !== undefined && { imageUrl }),
           ...(plateNumber !== undefined && { plateNumber }),
           ...(status && { status })

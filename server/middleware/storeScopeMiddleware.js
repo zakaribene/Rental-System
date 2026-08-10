@@ -1,4 +1,5 @@
 const Store = require("../models/Store");
+const User = require("../models/User");
 
 // Ensures store-role users can only ever operate on their own store's data.
 // Controllers should filter/assign storeId using req.storeId, never trust the request body.
@@ -10,7 +11,10 @@ const storeScopeMiddleware = async (req, res, next) => {
 
     // Blocks system-wide usage the moment a store is deactivated (e.g. an
     // expired grace period), not just fresh logins from already-active sessions.
-    const store = await Store.findById(req.user.storeId).select("status");
+    const [store, user] = await Promise.all([
+      Store.findById(req.user.storeId).select("status salesEnabled"),
+      User.findById(req.user.id).select("permissions")
+    ]);
     if (!store || store.status !== "active") {
       return res.status(403).json({
         code: "STORE_DEACTIVATED",
@@ -19,6 +23,8 @@ const storeScopeMiddleware = async (req, res, next) => {
     }
 
     req.storeId = req.user.storeId;
+    req.storeFeatures = { salesEnabled: store.salesEnabled };
+    req.userPermissions = user?.permissions || {};
     return next();
   }
 

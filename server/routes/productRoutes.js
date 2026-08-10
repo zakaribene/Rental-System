@@ -10,11 +10,12 @@ const {
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const requireModulePermission = require("../middleware/modulePermissionMiddleware");
 const { uploadProduct } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
-router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware);
+router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, requireModulePermission("products"));
 
 /**
  * @swagger
@@ -28,16 +29,20 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, rentPrice]
+ *             required: [name]
  *             properties:
  *               name: { type: string }
- *               category: { type: string, enum: [bag, clothing, other] }
- *               rentPrice: { type: number }
+ *               category: { type: string, description: "Free-text; store-defined via /categories" }
+ *               listingType: { type: string, enum: [RENT, SALE], description: "Defaults to RENT. SALE requires the store to have Sales enabled." }
+ *               rentPrice: { type: number, description: "Required when listingType is RENT" }
  *               depositPrice: { type: number }
+ *               salePrice: { type: number, description: "Required when listingType is SALE" }
+ *               stockQty: { type: number, description: "Required when listingType is SALE" }
  *               imageUrl: { type: string }
  *               plateNumber: { type: string, description: "Optional vehicle plate number (targa), for future vehicle rentals" }
  *     responses:
  *       201: { description: Product created }
+ *       403: { description: SALE listingType requested but the store's Sales feature is disabled }
  *   get:
  *     tags: [Products]
  *     summary: List products in the current store
@@ -100,9 +105,12 @@ router.post("/upload-image", uploadProduct.single("image"), uploadProductImage);
  *             type: object
  *             properties:
  *               name: { type: string }
- *               category: { type: string, enum: [bag, clothing, other] }
+ *               category: { type: string, description: "Free-text; store-defined via /categories" }
+ *               listingType: { type: string, enum: [RENT, SALE] }
  *               rentPrice: { type: number }
  *               depositPrice: { type: number }
+ *               salePrice: { type: number }
+ *               stockQty: { type: number }
  *               imageUrl: { type: string }
  *               plateNumber: { type: string, description: "Optional vehicle plate number (targa), for future vehicle rentals" }
  *               status: { type: string, enum: [available, rented, damaged, lost] }
@@ -122,7 +130,7 @@ router.post("/upload-image", uploadProduct.single("image"), uploadProductImage);
  *       404: { description: Not found }
  */
 router.get("/:id", getProductById);
-router.patch("/:id", updateProduct);
-router.delete("/:id", deleteProduct);
+router.patch("/:id", requireModulePermission("products", "edit"), updateProduct);
+router.delete("/:id", requireModulePermission("products", "delete"), deleteProduct);
 
 module.exports = router;

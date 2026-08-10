@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -5,6 +6,7 @@ import {
   Package,
   Users,
   ClipboardList,
+  ShoppingBag,
   Wallet,
   BarChart3,
   UserCog,
@@ -15,6 +17,8 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAuth } from '../../context/AuthContext'
+import { getMyStore } from '../../api/myStore'
+import usePermissions from '../../hooks/usePermissions'
 
 const superAdminNav = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -25,18 +29,27 @@ const superAdminNav = [
 
 const storeNav = [
   { to: '/store', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/store/products', label: 'Products', icon: Package },
-  { to: '/store/customers', label: 'Customers', icon: Users },
-  { to: '/store/rentals', label: 'Rentals', icon: ClipboardList },
-  { to: '/store/payments', label: 'Payments', icon: Wallet },
-  { to: '/store/reports', label: 'Reports', icon: BarChart3 },
+  { to: '/store/products', label: 'Products', icon: Package, module: 'products' },
+  { to: '/store/customers', label: 'Customers', icon: Users, module: 'customers' },
+  { to: '/store/rentals', label: 'Rentals', icon: ClipboardList, module: 'rentals' },
+  { to: '/store/payments', label: 'Payments', icon: Wallet, module: 'payments' },
+  { to: '/store/reports', label: 'Reports', icon: BarChart3, module: 'reports' },
 ]
 
 export default function Sidebar({ open = false, onClose }) {
   const { user } = useAuth()
+  const { can } = usePermissions()
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
-  const nav = isSuperAdmin ? superAdminNav : storeNav
+  const nav = (isSuperAdmin ? superAdminNav : storeNav).filter((item) => !item.module || can(item.module))
   const showUsers = user?.role === 'STORE_OWNER'
+  const [salesEnabled, setSalesEnabled] = useState(false)
+
+  useEffect(() => {
+    if (isSuperAdmin) return
+    getMyStore()
+      .then((store) => setSalesEnabled(!!store.salesEnabled))
+      .catch(() => setSalesEnabled(false))
+  }, [isSuperAdmin])
 
   return (
     <>
@@ -90,6 +103,23 @@ export default function Sidebar({ open = false, onClose }) {
               {item.label}
             </NavLink>
           ))}
+
+          {!isSuperAdmin && salesEnabled && can('sales') && (
+            <NavLink
+              to="/store/sales"
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
+                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100'
+                )
+              }
+            >
+              <ShoppingBag size={18} strokeWidth={2.25} />
+              Sales
+            </NavLink>
+          )}
 
           {showUsers && (
             <NavLink

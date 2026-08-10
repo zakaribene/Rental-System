@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, Calendar, Filter, Wallet, Smartphone, Landmark, Coins, Banknote, Search, FileSpreadsheet, FileDown } from 'lucide-react'
-import { getDailyTotals, getSummary } from '../../api/reports'
+import { Navigate } from 'react-router-dom'
+import { BarChart3, Calendar, Filter, Wallet, Search, FileSpreadsheet, FileDown, ShoppingBag, Tag, Package, Users2, AlertCircle } from 'lucide-react'
+import { getDailyTotals, getSummary, getSalesReport } from '../../api/reports'
 import { listPaymentMethods, listPayments } from '../../api/payments'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
+import { listSales } from '../../api/sales'
+import { listRentals } from '../../api/rentals'
 import { getMyStore } from '../../api/myStore'
+import { combineDebts } from '../../lib/debts'
 import Card, { CardHeader, CardBody } from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Pagination from '../../components/ui/Pagination'
@@ -13,23 +17,16 @@ import Button from '../../components/ui/Button'
 import Input, { Field, Select } from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner } from '../../components/ui/Misc'
-import { formatMoney, formatDateTime } from '../../lib/utils'
+import { formatMoney, formatDateTime, paymentSplitsLabel } from '../../lib/utils'
 import StatCard from '../../components/ui/StatCard'
-import { exportPaymentsToExcel, exportPaymentsToPdf } from '../../lib/reportExport'
+import { exportPaymentsToExcel, exportPaymentsToPdf, exportSalesToExcel, exportSalesToPdf } from '../../lib/reportExport'
+import { getMethodVisual } from '../../lib/paymentMethodVisuals'
+import usePermissions from '../../hooks/usePermissions'
 
 const typeTone = { DEPOSIT_COLLECTION: 'success', DEBT_SETTLEMENT: 'info', REFUND: 'warning' }
 
-const methodVisuals = [
-  { match: /evc/i, icon: Smartphone, bg: 'bg-green-50 dark:bg-green-500/15', text: 'text-green-600 dark:text-green-300', ring: 'ring-green-100 dark:ring-green-500/20' },
-  { match: /premier/i, icon: Landmark, bg: 'bg-sky-50 dark:bg-sky-500/15', text: 'text-sky-600 dark:text-sky-300', ring: 'ring-sky-100 dark:ring-sky-500/20' },
-  { match: /dahab|zaad/i, icon: Coins, bg: 'bg-amber-50 dark:bg-amber-500/15', text: 'text-amber-600 dark:text-amber-300', ring: 'ring-amber-100 dark:ring-amber-500/20' },
-  { match: /cash/i, icon: Banknote, bg: 'bg-emerald-50 dark:bg-emerald-500/15', text: 'text-emerald-600 dark:text-emerald-300', ring: 'ring-emerald-100 dark:ring-emerald-500/20' },
-]
-const defaultMethodVisual = { icon: Wallet, bg: 'bg-primary-50 dark:bg-primary-500/15', text: 'text-primary-600 dark:text-primary-300', ring: 'ring-primary-100 dark:ring-primary-500/20' }
-
-const getMethodVisual = (name = '') => methodVisuals.find((v) => v.match.test(name)) || defaultMethodVisual
-
 export default function Reports() {
+  const { can, loaded } = usePermissions()
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [daily, setDaily] = useState(null)
   const [summary, setSummary] = useState([])
@@ -48,6 +45,13 @@ export default function Reports() {
   const [filterLoading, setFilterLoading] = useState(false)
   const [store, setStore] = useState(null)
   const [exporting, setExporting] = useState('')
+  const [salesReport, setSalesReport] = useState(null)
+  const [salesRows, setSalesRows] = useState([])
+  const [salesLoading, setSalesLoading] = useState(true)
+  const [salesExporting, setSalesExporting] = useState('')
+  const [debtRecords, setDebtRecords] = useState([])
+  const [debtsLoading, setDebtsLoading] = useState(true)
+  const [debtSearch, setDebtSearch] = useState('')
 
   useEffect(() => {
     listPaymentMethods().then(setMethods)
@@ -55,6 +59,27 @@ export default function Reports() {
     listProducts().then(setProducts)
     getMyStore().then(setStore).catch(() => setStore(null))
   }, [])
+
+  useEffect(() => {
+    setDebtsLoading(true)
+    Promise.all([listRentals(), store?.salesEnabled ? listSales() : Promise.resolve([])])
+      .then(([rentals, sales]) => setDebtRecords(combineDebts(rentals, sales)))
+      .finally(() => setDebtsLoading(false))
+  }, [store?.salesEnabled])
+
+  useEffect(() => {
+    if (!store?.salesEnabled) return
+    setSalesLoading(true)
+    const params = {}
+    if (from) params.from = from
+    if (to) params.to = to
+    Promise.all([getSalesReport(params), listSales(params)])
+      .then(([report, sales]) => {
+        setSalesReport(report)
+        setSalesRows(sales)
+      })
+      .finally(() => setSalesLoading(false))
+  }, [store?.salesEnabled, from, to])
 
   useEffect(() => {
     setLoading(true)
@@ -87,6 +112,28 @@ export default function Reports() {
     ? filteredPayments.filter((p) => (p.transactionId || '').toLowerCase().includes(rentalIdQuery))
     : filteredPayments
   const { page, setPage, pageCount, pageItems, total: pagedTotal, pageSize } = usePagination(visiblePayments, 10)
+  const {
+    page: salesPage,
+    setPage: setSalesPage,
+    pageCount: salesPageCount,
+    pageItems: salesPageItems,
+    total: salesTotal,
+    pageSize: salesPageSize,
+  } = usePagination(salesRows, 10)
+
+  const debtQuery = debtSearch.trim().toLowerCase()
+  const filteredDebts = debtQuery
+    ? debtRecords.filter((d) => [d.customer?.fullName, d.customer?.phone].some((v) => v?.toLowerCase().includes(debtQuery)))
+    : debtRecords
+  const {
+    page: debtPage,
+    setPage: setDebtPage,
+    pageCount: debtPageCount,
+    pageItems: debtPageItems,
+    total: debtTotal,
+    pageSize: debtPageSize,
+  } = usePagination(filteredDebts, 10)
+  const totalOwed = filteredDebts.reduce((sum, d) => sum + d.remainingDebt, 0)
 
   const currentBalance = visiblePayments.reduce((sum, p) => {
     if (p.type === 'REFUND') return sum - p.amount
@@ -112,6 +159,28 @@ export default function Reports() {
       setExporting('')
     }
   }
+
+  const handleSalesExport = async (format) => {
+    setSalesExporting(format)
+    try {
+      const rows = salesRows.map((s) => ({
+        sale: `#${s._id.slice(-6)}`,
+        customer: s.customerId?.fullName || 'Walk-in',
+        items: s.items?.reduce((sum, it) => sum + (it.quantity || 0), 0) || 0,
+        staff: s.staffUserId?.name || '—',
+        discount: s.discountAmount ? formatMoney(s.discountAmount) : '—',
+        total: formatMoney(s.totalAmount),
+        method: paymentSplitsLabel(s),
+        date: formatDateTime(s.createdAt),
+      }))
+      if (format === 'excel') await exportSalesToExcel(rows, store)
+      else await exportSalesToPdf(rows, store)
+    } finally {
+      setSalesExporting('')
+    }
+  }
+
+  if (loaded && !can('reports')) return <Navigate to="/store" replace />
 
   return (
     <div className="animate-fadeIn">
@@ -216,6 +285,49 @@ export default function Reports() {
       </Card>
 
       <Card className="mb-6">
+        <CardHeader title="Customers with debt" subtitle="Outstanding balances across rentals and sales, whichever they came from" />
+        <CardBody>
+          <Field label="Search by customer name or phone" className="mb-5 max-w-sm">
+            <Input icon={Search} placeholder="e.g. Ahmed, 61..." value={debtSearch} onChange={(e) => setDebtSearch(e.target.value)} />
+          </Field>
+
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <StatCard label="Customers with debt" value={filteredDebts.length} icon={AlertCircle} tone="danger" />
+            <StatCard label="Total owed" value={formatMoney(totalOwed)} icon={Wallet} tone="warning" />
+          </div>
+
+          {debtsLoading ? (
+            <div className="flex h-32 items-center justify-center">
+              <Spinner size={26} />
+            </div>
+          ) : filteredDebts.length === 0 ? (
+            <EmptyState icon={AlertCircle} title="No outstanding debts" subtitle="Every rental and sale is fully paid." />
+          ) : (
+            <>
+              <Table
+                columns={[
+                  {
+                    key: 'kind',
+                    header: 'Type',
+                    render: (row) => <Badge tone={row.kind === 'RENTAL' ? 'info' : 'primary'}>{row.kind === 'RENTAL' ? 'Rental' : 'Sale'}</Badge>,
+                  },
+                  { key: 'id', header: 'Ref', render: (row) => <span className="font-mono text-xs text-ink-500">#{row.id.slice(-6)}</span> },
+                  { key: 'customer', header: 'Customer', render: (row) => row.customer?.fullName || 'Walk-in' },
+                  { key: 'phone', header: 'Phone', render: (row) => row.customer?.phone || '—' },
+                  { key: 'total', header: 'Total', render: (row) => formatMoney(row.total) },
+                  { key: 'paid', header: 'Paid', render: (row) => formatMoney(row.total - row.remainingDebt) },
+                  { key: 'owed', header: 'Owed', render: (row) => <span className="font-bold text-danger-600">{formatMoney(row.remainingDebt)}</span> },
+                  { key: 'date', header: 'Date', render: (row) => formatDateTime(row.date) },
+                ]}
+                data={debtPageItems}
+              />
+              <Pagination page={debtPage} pageCount={debtPageCount} total={debtTotal} pageSize={debtPageSize} onChange={setDebtPage} />
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card className="mb-6">
         <CardHeader
           title="Daily totals"
           action={
@@ -284,6 +396,109 @@ export default function Reports() {
           )}
         </CardBody>
       </Card>
+
+      {store?.salesEnabled && (
+        <Card className="mt-6">
+          <CardHeader
+            title="Sales"
+            subtitle="Revenue, top sellers and who made each sale"
+            action={
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" icon={FileSpreadsheet} loading={salesExporting === 'excel'} onClick={() => handleSalesExport('excel')}>
+                  Excel
+                </Button>
+                <Button variant="secondary" size="sm" icon={FileDown} loading={salesExporting === 'pdf'} onClick={() => handleSalesExport('pdf')}>
+                  PDF
+                </Button>
+              </div>
+            }
+          />
+          <CardBody>
+            {salesLoading ? (
+              <div className="flex h-32 items-center justify-center">
+                <Spinner size={26} />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard label="Sales revenue" value={formatMoney(salesReport?.totalRevenue || 0)} icon={ShoppingBag} tone="success" />
+                  <StatCard label="Discount given" value={formatMoney(salesReport?.totalDiscount || 0)} icon={Tag} tone="warning" />
+                  <StatCard label="Units sold" value={salesReport?.unitsSold || 0} icon={Package} tone="primary" />
+                  <StatCard label="Total sales" value={salesReport?.totalSales || 0} icon={Filter} tone="info" />
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Top selling products</p>
+                    {!salesReport?.topProducts?.length ? (
+                      <EmptyState icon={Package} title="No sales yet" />
+                    ) : (
+                      <div className="space-y-2">
+                        {salesReport.topProducts.map((p) => (
+                          <div key={p._id} className="flex items-center justify-between rounded-lg border border-ink-100 p-3 dark:border-ink-800">
+                            <div>
+                              <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">{p.name || 'Deleted product'}</p>
+                              <p className="text-xs text-ink-400">{p.unitsSold} unit(s) sold</p>
+                            </div>
+                            <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(p.revenue)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Sales by staff</p>
+                    {!salesReport?.byStaff?.length ? (
+                      <EmptyState icon={Users2} title="No sales yet" />
+                    ) : (
+                      <div className="space-y-2">
+                        {salesReport.byStaff.map((s) => (
+                          <div key={s._id} className="flex items-center justify-between rounded-lg border border-ink-100 p-3 dark:border-ink-800">
+                            <div>
+                              <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">{s.name || 'Unknown'}</p>
+                              <p className="text-xs text-ink-400">{s.totalSales} sale(s)</p>
+                            </div>
+                            <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(s.revenue)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">All sales</p>
+                  {salesRows.length === 0 ? (
+                    <EmptyState icon={ShoppingBag} title="No sales in this range" />
+                  ) : (
+                    <>
+                      <Table
+                        columns={[
+                          { key: 'id', header: 'Sale', render: (row) => <span className="font-mono text-xs text-ink-500">#{row._id.slice(-6)}</span> },
+                          { key: 'customer', header: 'Customer', render: (row) => row.customerId?.fullName || 'Walk-in' },
+                          {
+                            key: 'items',
+                            header: 'Items',
+                            render: (row) => `${row.items?.reduce((sum, it) => sum + (it.quantity || 0), 0) || 0} unit(s)`,
+                          },
+                          { key: 'staff', header: 'Sold by', render: (row) => row.staffUserId?.name || '—' },
+                          { key: 'discount', header: 'Discount', render: (row) => (row.discountAmount ? formatMoney(row.discountAmount) : '—') },
+                          { key: 'total', header: 'Total', render: (row) => formatMoney(row.totalAmount) },
+                          { key: 'method', header: 'Method', render: (row) => paymentSplitsLabel(row) },
+                          { key: 'date', header: 'Date', render: (row) => formatDateTime(row.createdAt) },
+                        ]}
+                        data={salesPageItems}
+                      />
+                      <Pagination page={salesPage} pageCount={salesPageCount} total={salesTotal} pageSize={salesPageSize} onChange={setSalesPage} />
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </CardBody>
+        </Card>
+      )}
     </div>
   )
 }

@@ -46,6 +46,14 @@ export function formatRelativeTime(date) {
   return `${value}${unit} ago`
 }
 
+// A sale's paymentSplits (populated) → "eDahab + EVC + Cash", or '—' for a
+// fully-on-credit sale with nothing paid yet.
+export function paymentSplitsLabel(sale) {
+  const splits = sale?.paymentSplits || []
+  if (splits.length === 0) return '—'
+  return splits.map((s) => s.paymentMethodId?.name || 'Unknown').join(' + ')
+}
+
 export function initials(name = '') {
   return name
     .split(' ')

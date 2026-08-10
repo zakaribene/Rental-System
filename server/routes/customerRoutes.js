@@ -8,11 +8,12 @@ const {
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const requireModulePermission = require("../middleware/modulePermissionMiddleware");
 const { uploadCustomerPhoto, uploadCustomerIdDocument } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
-router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware);
+router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, requireModulePermission("customers"));
 
 router.post("/upload-photo", uploadCustomerPhoto.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No image file provided" });
@@ -88,6 +89,6 @@ router.get("/", getCustomers);
  *       404: { description: Not found }
  */
 router.get("/:id", getCustomerById);
-router.patch("/:id", updateCustomer);
+router.patch("/:id", requireModulePermission("customers", "edit"), updateCustomer);
 
 module.exports = router;

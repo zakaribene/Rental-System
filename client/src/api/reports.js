@@ -5,3 +5,5 @@ export const getDailyTotals = (date) => api.get('/reports/daily-totals', { param
 export const getSummary = (params = {}) => api.get('/reports/summary', { params }).then((r) => r.data)
 
 export const getAnalytics = (params = {}) => api.get('/reports/analytics', { params }).then((r) => r.data)
+
+export const getSalesReport = (params = {}) => api.get('/reports/sales', { params }).then((r) => r.data)

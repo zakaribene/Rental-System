@@ -23,13 +23,22 @@ const login = async (req, res, next) => {
     }
 
     const user = await User.findOne({ phone });
-    if (!user || user.status !== "active") {
+    if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // Checked only after the password matches — an inactive account's status
+    // shouldn't be revealed to someone who doesn't actually know the password.
+    if (user.status !== "active") {
+      return res.status(403).json({
+        code: "ACCOUNT_DEACTIVATED",
+        message: "Your account has been deactivated. Please contact the administrator."
+      });
     }
 
     if (user.storeId) {

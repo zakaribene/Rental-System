@@ -9,6 +9,17 @@ const COLUMNS = [
   { header: 'Date', key: 'date', width: 20 },
 ]
 
+const SALES_COLUMNS = [
+  { header: 'Sale', key: 'sale', width: 12 },
+  { header: 'Customer', key: 'customer', width: 20 },
+  { header: 'Items', key: 'items', width: 10 },
+  { header: 'Sold by', key: 'staff', width: 16 },
+  { header: 'Discount', key: 'discount', width: 12 },
+  { header: 'Total', key: 'total', width: 12 },
+  { header: 'Method', key: 'method', width: 16 },
+  { header: 'Date', key: 'date', width: 20 },
+]
+
 async function loadImageAsDataUrl(url) {
   if (!url) return null
   try {
@@ -120,4 +131,95 @@ export async function exportPaymentsToPdf(rows, store) {
   })
 
   doc.save(`transactions-${Date.now()}.pdf`)
+}
+
+export async function exportSalesToExcel(rows, store) {
+  const [{ default: ExcelJS }, { saveAs }] = await Promise.all([import('exceljs'), import('file-saver')])
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = store?.storeName || 'Rental System'
+  const sheet = workbook.addWorksheet('Sales')
+  const lastCol = String.fromCharCode(64 + SALES_COLUMNS.length)
+
+  sheet.mergeCells(`A1:${lastCol}1`)
+  const titleCell = sheet.getCell('A1')
+  titleCell.value = store?.storeName || 'Rental System'
+  titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } }
+  titleCell.alignment = { vertical: 'middle' }
+  sheet.getRow(1).height = 34
+  for (let col = 1; col <= SALES_COLUMNS.length; col++) {
+    sheet.getRow(1).getCell(col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6C4FFF' } }
+  }
+
+  sheet.mergeCells(`A2:${lastCol}2`)
+  const subtitleCell = sheet.getCell('A2')
+  subtitleCell.value = `Sales report — generated ${new Date().toLocaleString()}`
+  subtitleCell.font = { size: 10, italic: true, color: { argb: 'FF677185' } }
+  sheet.getRow(2).height = 20
+  sheet.addRow([])
+
+  const headerRow = sheet.addRow(SALES_COLUMNS.map((c) => c.header))
+  headerRow.height = 20
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3140' } }
+    cell.alignment = { vertical: 'middle' }
+  })
+
+  rows.forEach((r, i) => {
+    const row = sheet.addRow(SALES_COLUMNS.map((c) => r[c.key]))
+    if (i % 2 === 1) {
+      row.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F7F9' } }
+      })
+    }
+  })
+
+  SALES_COLUMNS.forEach((c, i) => {
+    sheet.getColumn(i + 1).width = c.width
+  })
+
+  if (store?.logoUrl) {
+    const dataUrl = await loadImageAsDataUrl(store.logoUrl)
+    if (dataUrl) {
+      const imageId = workbook.addImage({ base64: dataUrl, extension: extensionFromDataUrl(dataUrl) })
+      sheet.addImage(imageId, { tl: { col: SALES_COLUMNS.length - 0.9, row: 0.05 }, ext: { width: 32, height: 32 } })
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `sales-${Date.now()}.xlsx`)
+}
+
+export async function exportSalesToPdf(rows, store) {
+  const [{ default: jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
+  const autoTable = autoTableModule.default
+
+  const doc = new jsPDF()
+  let textX = 14
+
+  if (store?.logoUrl) {
+    const dataUrl = await loadImageAsDataUrl(store.logoUrl)
+    if (dataUrl) {
+      doc.addImage(dataUrl, extensionFromDataUrl(dataUrl).toUpperCase(), 14, 10, 14, 14)
+      textX = 32
+    }
+  }
+
+  doc.setFontSize(16)
+  doc.setTextColor(40, 40, 40)
+  doc.text(store?.storeName || 'Rental System', textX, 18)
+  doc.setFontSize(9)
+  doc.setTextColor(120, 120, 120)
+  doc.text(`Sales report — generated ${new Date().toLocaleString()}`, textX, 24)
+
+  autoTable(doc, {
+    startY: 32,
+    head: [SALES_COLUMNS.map((c) => c.header)],
+    body: rows.map((r) => SALES_COLUMNS.map((c) => r[c.key])),
+    headStyles: { fillColor: [108, 79, 255], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [246, 247, 249] },
+    styles: { fontSize: 8, cellPadding: 3 },
+  })
+
+  doc.save(`sales-${Date.now()}.pdf`)
 }

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { Plus, Users, Search, Phone, User, IdCard, Eye, Upload, Trash2, ClipboardList, Wallet, AlertTriangle, FileText, ShieldAlert, Clock } from 'lucide-react'
 import { listCustomers, createCustomer, updateCustomer, uploadCustomerPhoto, uploadCustomerIdDocument } from '../../api/customers'
 import { listRentals } from '../../api/rentals'
+import usePermissions from '../../hooks/usePermissions'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Pagination from '../../components/ui/Pagination'
@@ -17,6 +19,7 @@ import { apiErrorMessage } from '../../api/client'
 const emptyForm = { fullName: '', phone: '', idDocumentNumber: '', photoUrl: '', idDocumentImageUrl: '' }
 
 export default function Customers() {
+  const { can, loaded } = usePermissions()
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -116,6 +119,8 @@ export default function Customers() {
     }
   }
 
+  if (loaded && !can('customers')) return <Navigate to="/store" replace />
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
@@ -197,9 +202,11 @@ export default function Customers() {
                       <Button size="sm" variant="secondary" icon={Eye} onClick={() => setViewCustomer(row)}>
                         View
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
-                        Edit
-                      </Button>
+                      {can('customers', 'edit') && (
+                        <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
+                          Edit
+                        </Button>
+                      )}
                     </div>
                   ),
                 },

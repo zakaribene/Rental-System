@@ -26,6 +26,9 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *               phone: { type: string }
  *               password: { type: string }
  *               role: { type: string, enum: [STORE_OWNER, STORE_STAFF] }
+ *               permissions:
+ *                 type: object
+ *                 description: "Per-module access for STORE_STAFF (products/customers/rentals/sales/payments/reports), each { enabled, edit, delete }. Ignored for STORE_OWNER."
  *     responses:
  *       201: { description: User created }
  *   get:
@@ -57,6 +60,9 @@ router.get("/", getUsers);
  *               name: { type: string }
  *               status: { type: string, enum: [active, inactive] }
  *               role: { type: string, enum: [STORE_OWNER, STORE_STAFF] }
+ *               permissions:
+ *                 type: object
+ *                 description: "Per-module access for STORE_STAFF (products/customers/rentals/sales/payments/reports), each { enabled, edit, delete }. Ignored for STORE_OWNER."
  *     responses:
  *       200: { description: Updated user }
  *       404: { description: Not found }

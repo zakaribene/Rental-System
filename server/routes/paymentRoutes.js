@@ -9,10 +9,11 @@ const {
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const requireModulePermission = require("../middleware/modulePermissionMiddleware");
 
 const router = express.Router();
 
-router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware);
+router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, requireModulePermission("payments"));
 
 /**
  * @swagger
@@ -79,9 +80,10 @@ router.patch("/payment-methods/:id", updatePaymentMethod);
  *             type: object
  *             required: [type, amount, paymentMethodId]
  *             properties:
- *               transactionId: { type: string }
+ *               transactionId: { type: string, description: "Required for DEBT_SETTLEMENT (rental)" }
+ *               saleId: { type: string, description: "Required for SALE_PAYMENT (settling a sale's remaining balance)" }
  *               customerId: { type: string }
- *               type: { type: string, enum: [DEPOSIT_COLLECTION, DEBT_SETTLEMENT, REFUND] }
+ *               type: { type: string, enum: [DEPOSIT_COLLECTION, DEBT_SETTLEMENT, REFUND, SALE_PAYMENT] }
  *               amount: { type: number }
  *               paymentMethodId: { type: string }
  *     responses:

@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Payment = require("../models/Payment");
 const RentalTransaction = require("../models/RentalTransaction");
+const SaleTransaction = require("../models/SaleTransaction");
 
 const dailyTotals = async (req, res, next) => {
   try {
@@ -127,4 +128,74 @@ const analytics = async (req, res, next) => {
   }
 };
 
-module.exports = { dailyTotals, summary, analytics };
+const salesReport = async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    const storeId = new mongoose.Types.ObjectId(req.storeId);
+
+    const match = { storeId };
+    if (from || to) {
+      match.createdAt = {};
+      if (from) match.createdAt.$gte = new Date(from);
+      if (to) match.createdAt.$lte = new Date(to);
+    }
+
+    const totals = await SaleTransaction.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$totalAmount" },
+          totalDiscount: { $sum: "$discountAmount" },
+          totalSales: { $sum: 1 },
+          unitsSold: { $sum: { $sum: "$items.quantity" } }
+        }
+      }
+    ]);
+
+    const topProducts = await SaleTransaction.aggregate([
+      { $match: match },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.productId",
+          unitsSold: { $sum: "$items.quantity" },
+          revenue: { $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] } }
+        }
+      },
+      { $sort: { unitsSold: -1 } },
+      { $limit: 5 },
+      { $lookup: { from: "products", localField: "_id", foreignField: "_id", as: "product" } },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+      { $project: { _id: 1, unitsSold: 1, revenue: 1, name: "$product.name" } }
+    ]);
+
+    const byStaff = await SaleTransaction.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: "$staffUserId",
+          totalSales: { $sum: 1 },
+          revenue: { $sum: "$totalAmount" }
+        }
+      },
+      { $sort: { revenue: -1 } },
+      { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+      { $project: { _id: 1, totalSales: 1, revenue: 1, name: "$user.name" } }
+    ]);
+
+    res.json({
+      totalRevenue: totals[0]?.totalRevenue || 0,
+      totalDiscount: totals[0]?.totalDiscount || 0,
+      totalSales: totals[0]?.totalSales || 0,
+      unitsSold: totals[0]?.unitsSold || 0,
+      topProducts,
+      byStaff
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { dailyTotals, summary, analytics, salesReport };

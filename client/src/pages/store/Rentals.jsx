@@ -1,10 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ClipboardList, Trash2, PackageCheck, Upload, ArrowUpCircle, ArrowDownCircle, FileText, Banknote, Search, Printer, Download } from 'lucide-react'
-import { listRentals, createRental, getRental, returnRental, uploadDepositDocument } from '../../api/rentals'
+import { Navigate } from 'react-router-dom'
+import {
+  Plus,
+  ClipboardList,
+  Trash2,
+  PackageCheck,
+  Upload,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  FileText,
+  Banknote,
+  Search,
+  Printer,
+  Download,
+  Eye,
+  Pencil,
+} from 'lucide-react'
+import { listRentals, createRental, updateRental, getRental, addRentalDeposit, returnRental, uploadDepositDocument } from '../../api/rentals'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
 import { listPaymentMethods } from '../../api/payments'
 import { getMyStore } from '../../api/myStore'
+import usePermissions from '../../hooks/usePermissions'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Pagination from '../../components/ui/Pagination'
@@ -12,6 +29,9 @@ import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
+import ProductPicker from '../../components/ui/ProductPicker'
+import CustomerPicker from '../../components/ui/CustomerPicker'
+import RowActionsMenu from '../../components/ui/RowActionsMenu'
 import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
 import { formatMoney, formatDateTime } from '../../lib/utils'
@@ -25,24 +45,29 @@ const DURATION_PRESETS = [
   { label: '1 week', hours: 168 },
 ]
 
-function computeDurationValue(hours) {
-  const d = new Date(Date.now() + hours * 60 * 60 * 1000)
+function toDatetimeLocalValue(date) {
   const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function computeDurationValue(hours) {
+  return toDatetimeLocalValue(new Date(Date.now() + hours * 60 * 60 * 1000))
 }
 
 export default function Rentals() {
+  const { can, loaded } = usePermissions()
   const [rentals, setRentals] = useState([])
   const [customers, setCustomers] = useState([])
-  const [products, setProducts] = useState([])
+  const [allProducts, setAllProducts] = useState([])
   const [methods, setMethods] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
 
-  const [createOpen, setCreateOpen] = useState(false)
+  const [formTarget, setFormTarget] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState(null)
+  const [detailAutoPrint, setDetailAutoPrint] = useState(false)
   const [store, setStore] = useState(null)
 
   const load = () => {
@@ -54,23 +79,39 @@ export default function Rentals() {
 
   useEffect(load, [statusFilter])
 
+  const loadProducts = () => listProducts().then(setAllProducts)
+
   useEffect(() => {
     listCustomers().then(setCustomers)
-    listProducts('available').then(setProducts)
+    loadProducts()
     listPaymentMethods().then(setMethods).catch(() => setMethods([]))
     getMyStore().then(setStore).catch(() => setStore(null))
   }, [])
 
-  const openDetail = async (rental) => {
+  const openDetail = async (rental, { autoPrint = false } = {}) => {
     setDetailOpen(true)
     setDetail(null)
+    setDetailAutoPrint(autoPrint)
     const data = await getRental(rental._id)
     setDetail(data)
   }
 
   const afterMutate = () => {
     load()
-    listProducts('available').then(setProducts)
+    loadProducts()
+  }
+
+  const openCreate = () => {
+    setFormTarget({ mode: 'create', rental: null, products: allProducts.filter((p) => p.status === 'available') })
+  }
+
+  const openEdit = (row) => {
+    // A product currently held by this rental is already "rented", so the
+    // edit form's product list needs it too, not just the normally-available
+    // ones — otherwise you couldn't even keep the same item.
+    const rentedProductIds = new Set((row.items || []).map((it) => (it.productId?._id || it.productId)))
+    const effectiveProducts = allProducts.filter((p) => p.status === 'available' || rentedProductIds.has(p._id))
+    setFormTarget({ mode: 'edit', rental: row, products: effectiveProducts })
   }
 
   const query = search.trim().toLowerCase()
@@ -81,13 +122,15 @@ export default function Rentals() {
     : rentals
   const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(filteredRentals, 10)
 
+  if (loaded && !can('rentals')) return <Navigate to="/store" replace />
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
         title="Rentals"
         subtitle="Track items out on rent and process returns."
         action={
-          <Button icon={Plus} onClick={() => setCreateOpen(true)}>
+          <Button icon={Plus} onClick={openCreate}>
             New rental
           </Button>
         }
@@ -121,7 +164,7 @@ export default function Rentals() {
             title="No rentals yet"
             subtitle="Create a rental once a customer picks up an item."
             action={
-              <Button icon={Plus} size="sm" onClick={() => setCreateOpen(true)}>
+              <Button icon={Plus} size="sm" onClick={openCreate}>
                 New rental
               </Button>
             }
@@ -131,7 +174,7 @@ export default function Rentals() {
         ) : (
           <>
             <Table
-              onRowClick={openDetail}
+              onRowClick={(row) => openDetail(row)}
               columns={[
                 { key: 'id', header: 'Rental', render: (row) => <span className="font-mono text-xs text-ink-500">#{row._id.slice(-6)}</span> },
                 { key: 'customer', header: 'Customer', render: (row) => row.customerId?.fullName || '—' },
@@ -141,6 +184,25 @@ export default function Rentals() {
                 { key: 'dateOut', header: 'Date out', render: (row) => formatDateTime(row.dateOut) },
                 { key: 'expectedReturnDate', header: 'Due', render: (row) => formatDateTime(row.expectedReturnDate) },
                 { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                {
+                  key: 'actions',
+                  header: '',
+                  headerClassName: 'text-right',
+                  className: 'text-right',
+                  render: (row) => (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <RowActionsMenu
+                        items={[
+                          { key: 'view', label: 'View', icon: Eye, onClick: () => openDetail(row) },
+                          ...(can('rentals', 'edit')
+                            ? [{ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => openEdit(row) }]
+                            : []),
+                          { key: 'print', label: 'Print', icon: Printer, onClick: () => openDetail(row, { autoPrint: true }) },
+                        ]}
+                      />
+                    </div>
+                  ),
+                },
               ]}
               data={pageItems}
             />
@@ -149,14 +211,16 @@ export default function Rentals() {
         )}
       </Card>
 
-      <NewRentalModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
+      <RentalFormModal
+        open={!!formTarget}
+        mode={formTarget?.mode || 'create'}
+        rental={formTarget?.rental}
+        products={formTarget?.products || []}
         customers={customers}
-        products={products}
         methods={methods}
-        onCreated={() => {
-          setCreateOpen(false)
+        onClose={() => setFormTarget(null)}
+        onSaved={() => {
+          setFormTarget(null)
           afterMutate()
         }}
       />
@@ -165,6 +229,7 @@ export default function Rentals() {
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         detail={detail}
+        autoPrint={detailAutoPrint}
         methods={methods}
         store={store}
         onReturned={() => {
@@ -176,7 +241,7 @@ export default function Rentals() {
   )
 }
 
-function NewRentalModal({ open, onClose, customers, products, methods, onCreated }) {
+function RentalFormModal({ open, mode, rental, onClose, customers, products, methods, onSaved }) {
   const [customerId, setCustomerId] = useState('')
   const [items, setItems] = useState([{ productId: '', quantity: 1 }])
   const [expectedReturnDate, setExpectedReturnDate] = useState('')
@@ -186,6 +251,9 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
   const [guarantorName, setGuarantorName] = useState('')
   const [guarantorPhone, setGuarantorPhone] = useState('')
   const [documentImageUrl, setDocumentImageUrl] = useState('')
+  const [existingDeposits, setExistingDeposits] = useState([])
+  const [depositsLoading, setDepositsLoading] = useState(false)
+  const [addingDeposit, setAddingDeposit] = useState(false)
   const [documentUploading, setDocumentUploading] = useState(false)
   const documentInputRef = useRef(null)
   const [error, setError] = useState('')
@@ -204,6 +272,59 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
     setGuarantorPhone('')
     setDocumentImageUrl('')
     setError('')
+  }
+
+  useEffect(() => {
+    if (!open) return
+    if (mode === 'edit' && rental) {
+      setCustomerId(rental.customerId?._id || rental.customerId || '')
+      setItems((rental.items || []).map((it) => ({ productId: it.productId?._id || it.productId, quantity: it.quantity })))
+      setExpectedReturnDate(rental.expectedReturnDate ? toDatetimeLocalValue(new Date(rental.expectedReturnDate)) : '')
+      setDepositType('NONE')
+      setCashAmount('')
+      setPaymentMethodId('')
+      setGuarantorName('')
+      setGuarantorPhone('')
+      setDocumentImageUrl('')
+      setDepositsLoading(true)
+      getRental(rental._id)
+        .then((data) => setExistingDeposits(data.deposits))
+        .finally(() => setDepositsLoading(false))
+    } else {
+      reset()
+      setExistingDeposits([])
+    }
+    setError('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, rental])
+
+  const handleAddDeposit = async () => {
+    setError('')
+    let payload = null
+    if (depositType === 'CASH' && cashAmount) payload = { depositType: 'CASH', cashAmount: Number(cashAmount), paymentMethodId }
+    else if (depositType === 'GUARANTOR' && guarantorName) payload = { depositType: 'GUARANTOR', guarantorName, guarantorPhone }
+    else if (depositType === 'DOCUMENT' && documentImageUrl) payload = { depositType: 'DOCUMENT', documentImageUrl }
+    if (!payload) {
+      setError('Fill in the deposit details before adding it.')
+      return
+    }
+
+    setAddingDeposit(true)
+    try {
+      await addRentalDeposit(rental._id, payload)
+      const data = await getRental(rental._id)
+      setExistingDeposits(data.deposits)
+      setDepositType('NONE')
+      setCashAmount('')
+      setPaymentMethodId('')
+      setGuarantorName('')
+      setGuarantorPhone('')
+      setDocumentImageUrl('')
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to add deposit'))
+    } finally {
+      setAddingDeposit(false)
+    }
   }
 
   const handleDocumentSelect = async (e) => {
@@ -244,27 +365,34 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
       return
     }
 
-    const deposits = []
-    if (depositType === 'CASH' && cashAmount) {
-      deposits.push({ depositType: 'CASH', cashAmount: Number(cashAmount), paymentMethodId })
-    } else if (depositType === 'GUARANTOR' && guarantorName) {
-      deposits.push({ depositType: 'GUARANTOR', guarantorName, guarantorPhone })
-    } else if (depositType === 'DOCUMENT' && documentImageUrl) {
-      deposits.push({ depositType: 'DOCUMENT', documentImageUrl })
-    }
-
     setSaving(true)
     try {
-      await createRental({
-        customerId,
-        items: cleanItems,
-        expectedReturnDate: expectedReturnDate || undefined,
-        deposits: deposits.length ? deposits : undefined,
-      })
+      if (mode === 'edit') {
+        await updateRental(rental._id, {
+          customerId,
+          items: cleanItems,
+          expectedReturnDate: expectedReturnDate || undefined,
+        })
+      } else {
+        const deposits = []
+        if (depositType === 'CASH' && cashAmount) {
+          deposits.push({ depositType: 'CASH', cashAmount: Number(cashAmount), paymentMethodId })
+        } else if (depositType === 'GUARANTOR' && guarantorName) {
+          deposits.push({ depositType: 'GUARANTOR', guarantorName, guarantorPhone })
+        } else if (depositType === 'DOCUMENT' && documentImageUrl) {
+          deposits.push({ depositType: 'DOCUMENT', documentImageUrl })
+        }
+        await createRental({
+          customerId,
+          items: cleanItems,
+          expectedReturnDate: expectedReturnDate || undefined,
+          deposits: deposits.length ? deposits : undefined,
+        })
+      }
       reset()
-      onCreated()
+      onSaved()
     } catch (err) {
-      setError(apiErrorMessage(err, 'Failed to create rental'))
+      setError(apiErrorMessage(err, mode === 'edit' ? 'Failed to update rental' : 'Failed to create rental'))
     } finally {
       setSaving(false)
     }
@@ -277,8 +405,8 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
         onClose()
         reset()
       }}
-      title="New rental"
-      subtitle="Hand out items and record the rental."
+      title={mode === 'edit' ? `Edit rental #${rental?._id?.slice(-6)}` : 'New rental'}
+      subtitle={mode === 'edit' ? 'Update items, customer or due date.' : 'Hand out items and record the rental.'}
       size="lg"
       footer={
         <>
@@ -286,7 +414,7 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
             Cancel
           </Button>
           <Button form="rental-form" type="submit" loading={saving}>
-            Create rental
+            {mode === 'edit' ? 'Save changes' : 'Create rental'}
           </Button>
         </>
       }
@@ -295,15 +423,7 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
         {error && <Alert>{error}</Alert>}
 
         <Field label="Customer" required>
-          <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
-            <option value="">Select a customer</option>
-            {customers.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.isRisky ? '⚠ ' : ''}
-                {c.fullName} · {c.phone}
-              </option>
-            ))}
-          </Select>
+          <CustomerPicker customers={customers} value={customerId} onChange={setCustomerId} />
           {selectedCustomer?.isRisky && (
             <div className="mt-2">
               <Alert tone="warning">
@@ -324,18 +444,14 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
           <div className="space-y-2">
             {items.map((it, idx) => (
               <div key={idx} className="flex items-center gap-2">
-                <Select
+                <ProductPicker
+                  products={products}
                   value={it.productId}
-                  onChange={(e) => updateItem(idx, { productId: e.target.value })}
+                  onChange={(id) => updateItem(idx, { productId: id })}
+                  priceKey="rentPrice"
+                  placeholder="Search product to rent..."
                   className="flex-1"
-                >
-                  <option value="">Select product</option>
-                  {products.map((p) => (
-                    <option key={p._id} value={p._id}>
-                      {p.name} · {formatMoney(p.rentPrice)}
-                    </option>
-                  ))}
-                </Select>
+                />
                 <Input
                   type="number"
                   min="1"
@@ -374,8 +490,34 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
 
         <div>
           <span className="mb-2 block text-sm font-medium text-ink-700">Deposit</span>
+
+          {mode === 'edit' && (
+            <div className="mb-3 space-y-2">
+              {depositsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-ink-400">
+                  <Spinner size={14} /> Loading deposits...
+                </div>
+              ) : existingDeposits.length === 0 ? (
+                <p className="text-xs text-ink-400">No deposit recorded yet.</p>
+              ) : (
+                existingDeposits.map((d) => (
+                  <div key={d._id} className="flex items-center justify-between rounded-lg border border-ink-100 px-3 py-2 text-xs dark:border-ink-700">
+                    <span className="font-medium text-ink-700 dark:text-ink-200">
+                      {d.depositType === 'CASH'
+                        ? `Cash · ${formatMoney(d.cashAmount)}`
+                        : d.depositType === 'GUARANTOR'
+                        ? `Guarantor · ${d.guarantorName}${d.guarantorPhone ? ` · ${d.guarantorPhone}` : ''}`
+                        : 'Document / ID held'}
+                    </span>
+                    <span className="text-ink-400">{formatDateTime(d.createdAt)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           <Select value={depositType} onChange={(e) => setDepositType(e.target.value)}>
-            <option value="NONE">No deposit</option>
+            <option value="NONE">{mode === 'edit' ? 'No new deposit' : 'No deposit'}</option>
             <option value="CASH">Cash</option>
             <option value="GUARANTOR">Guarantor</option>
             <option value="DOCUMENT">Document / ID (e.g. passport)</option>
@@ -447,13 +589,21 @@ function NewRentalModal({ open, onClose, customers, products, methods, onCreated
               )}
             </div>
           )}
+
+          {mode === 'edit' && depositType !== 'NONE' && (
+            <div className="mt-3 flex justify-end">
+              <Button type="button" size="sm" loading={addingDeposit} onClick={handleAddDeposit}>
+                Add deposit
+              </Button>
+            </div>
+          )}
         </div>
       </form>
     </Modal>
   )
 }
 
-function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }) {
+function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, onReturned }) {
   const [selection, setSelection] = useState({})
   const [damageCosts, setDamageCosts] = useState({})
   const [refundMethodId, setRefundMethodId] = useState('')
@@ -475,6 +625,13 @@ function RentalDetailModal({ open, onClose, detail, methods, store, onReturned }
       setError('')
     }
   }, [detail])
+
+  useEffect(() => {
+    if (open && autoPrint && detail?.transaction) {
+      const t = setTimeout(() => window.print(), 150)
+      return () => clearTimeout(t)
+    }
+  }, [open, autoPrint, detail])
 
   if (!open) return null
 

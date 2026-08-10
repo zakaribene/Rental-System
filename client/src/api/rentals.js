@@ -9,6 +9,10 @@ export const getRental = (id) => api.get(`/rentals/${id}`).then((r) => r.data)
 
 export const createRental = (payload) => api.post('/rentals', payload).then((r) => r.data)
 
+export const updateRental = (id, payload) => api.patch(`/rentals/${id}`, payload).then((r) => r.data)
+
+export const addRentalDeposit = (id, payload) => api.post(`/rentals/${id}/deposits`, payload).then((r) => r.data)
+
 export const returnRental = (id, payload) => api.post(`/rentals/${id}/return`, payload).then((r) => r.data)
 
 export const uploadDepositDocument = (file) => {

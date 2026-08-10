@@ -1,12 +1,14 @@
 const express = require("express");
-const { dailyTotals, summary, analytics } = require("../controllers/reportController");
+const { dailyTotals, summary, analytics, salesReport } = require("../controllers/reportController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const requireStoreFeature = require("../middleware/storeFeatureMiddleware");
+const requireModulePermission = require("../middleware/modulePermissionMiddleware");
 
 const router = express.Router();
 
-router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware);
+router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, requireModulePermission("reports"));
 
 /**
  * @swagger
@@ -65,5 +67,24 @@ router.get("/summary", summary);
  *       200: { description: Analytics data }
  */
 router.get("/analytics", analytics);
+
+/**
+ * @swagger
+ * /reports/sales:
+ *   get:
+ *     tags: [Reports]
+ *     summary: Get sales revenue, top selling products and a per-staff breakdown
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200: { description: Sales report }
+ *       403: { description: Sales feature disabled for this store }
+ */
+router.get("/sales", requireStoreFeature("salesEnabled"), salesReport);
 
 module.exports = router;

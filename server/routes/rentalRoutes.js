@@ -1,13 +1,14 @@
 const express = require("express");
-const { createRental, getRentals, getRentalById, returnRental } = require("../controllers/rentalController");
+const { createRental, getRentals, getRentalById, updateRental, addRentalDeposit, returnRental } = require("../controllers/rentalController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const requireModulePermission = require("../middleware/modulePermissionMiddleware");
 const { uploadDocument } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
-router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware);
+router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, requireModulePermission("rentals"));
 
 /**
  * @swagger
@@ -94,8 +95,70 @@ router.get("/", getRentals);
  *     responses:
  *       200: { description: Rental transaction with deposits }
  *       404: { description: Not found }
+ *   patch:
+ *     tags: [Rentals]
+ *     summary: Edit a rental (items, customer, expected return date) — reconciles product availability for added/removed items
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [customerId, items]
+ *             properties:
+ *               customerId: { type: string }
+ *               expectedReturnDate: { type: string, format: date }
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     productId: { type: string }
+ *                     quantity: { type: number }
+ *     responses:
+ *       200: { description: Rental updated }
+ *       404: { description: Not found }
+ *       409: { description: Already returned, or a newly-added product isn't available }
  */
 router.get("/:id", getRentalById);
+router.patch("/:id", requireModulePermission("rentals", "edit"), updateRental);
+
+/**
+ * @swagger
+ * /rentals/{id}/deposits:
+ *   post:
+ *     tags: [Rentals]
+ *     summary: Add a deposit to an existing rental (e.g. one that was created without one)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [depositType]
+ *             properties:
+ *               depositType: { type: string, enum: [CASH, DOCUMENT, GUARANTOR, CARD] }
+ *               cashAmount: { type: number }
+ *               paymentMethodId: { type: string }
+ *               documentImageUrl: { type: string }
+ *               guarantorName: { type: string }
+ *               guarantorPhone: { type: string }
+ *     responses:
+ *       201: { description: Deposit added }
+ *       404: { description: Not found }
+ *       409: { description: Rental already returned }
+ */
+router.post("/:id/deposits", requireModulePermission("rentals", "edit"), addRentalDeposit);
 
 /**
  * @swagger

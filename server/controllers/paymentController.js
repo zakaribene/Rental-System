@@ -1,6 +1,7 @@
 const PaymentMethod = require("../models/PaymentMethod");
 const Payment = require("../models/Payment");
 const RentalTransaction = require("../models/RentalTransaction");
+const SaleTransaction = require("../models/SaleTransaction");
 const Customer = require("../models/Customer");
 
 // --- Payment Methods ---
@@ -44,7 +45,7 @@ const updatePaymentMethod = async (req, res, next) => {
 
 const createPayment = async (req, res, next) => {
   try {
-    const { transactionId, customerId, type, amount, paymentMethodId } = req.body;
+    const { transactionId, saleId, customerId, type, amount, paymentMethodId } = req.body;
     if (!type || amount === undefined || !paymentMethodId) {
       return res.status(400).json({ message: "type, amount and paymentMethodId are required" });
     }
@@ -53,6 +54,7 @@ const createPayment = async (req, res, next) => {
     }
 
     let transaction = null;
+    let sale = null;
     if (type === "DEBT_SETTLEMENT") {
       if (!transactionId) {
         return res.status(400).json({ message: "transactionId is required for a debt settlement" });
@@ -71,11 +73,30 @@ const createPayment = async (req, res, next) => {
           remainingDebt
         });
       }
+    } else if (type === "SALE_PAYMENT") {
+      if (!saleId) {
+        return res.status(400).json({ message: "saleId is required for a sale payment" });
+      }
+      sale = await SaleTransaction.findOne({ _id: saleId, storeId: req.storeId });
+      if (!sale) {
+        return res.status(404).json({ message: "Sale not found" });
+      }
+      const remainingDebt = sale.remainingDebt;
+      if (remainingDebt <= 0) {
+        return res.status(409).json({ message: "This sale has no remaining debt", remainingDebt: 0 });
+      }
+      if (amount > remainingDebt) {
+        return res.status(409).json({
+          message: `Amount exceeds the remaining debt of ${remainingDebt}`,
+          remainingDebt
+        });
+      }
     }
 
     const customer = customerId ? await Customer.findById(customerId) : null;
     const customerLabel = customer?.fullName || "customer";
     const rentalLabel = transactionId ? `rental #${transactionId.toString().slice(-6)}` : "no linked rental";
+    const saleLabel = saleId ? `sale #${saleId.toString().slice(-6)}` : "no linked sale";
 
     let note;
     if (type === "DEBT_SETTLEMENT") {
@@ -84,6 +105,12 @@ const createPayment = async (req, res, next) => {
         remainingAfter > 0
           ? `${customerLabel} paid ${amount} toward ${rentalLabel} — ${remainingAfter} still owed`
           : `${customerLabel} paid ${amount} toward ${rentalLabel} — debt fully settled`;
+    } else if (type === "SALE_PAYMENT") {
+      const remainingAfter = Math.max(0, sale.remainingDebt - amount);
+      note =
+        remainingAfter > 0
+          ? `${customerLabel} paid ${amount} toward ${saleLabel} — ${remainingAfter} still owed`
+          : `${customerLabel} paid ${amount} toward ${saleLabel} — debt fully settled`;
     } else if (type === "DEPOSIT_COLLECTION") {
       note = `Deposit of ${amount} collected from ${customerLabel} for ${rentalLabel}`;
     } else if (type === "REFUND") {
@@ -93,6 +120,7 @@ const createPayment = async (req, res, next) => {
     const payment = await Payment.create({
       storeId: req.storeId,
       transactionId,
+      saleId,
       customerId,
       type,
       amount,
@@ -106,6 +134,10 @@ const createPayment = async (req, res, next) => {
       transaction.rentPaid = (transaction.rentPaid || 0) + amount;
       await transaction.save();
       remainingDebt = transaction.remainingDebt;
+    } else if (type === "SALE_PAYMENT" && sale) {
+      sale.amountPaid = (sale.amountPaid || 0) + amount;
+      await sale.save();
+      remainingDebt = sale.remainingDebt;
     }
 
     res.status(201).json({ payment, remainingDebt });

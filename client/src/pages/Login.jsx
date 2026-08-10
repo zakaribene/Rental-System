@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Lock, Sparkles, ArrowRight } from 'lucide-react'
+import { Phone, Lock, Sparkles, ArrowRight, UserX } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import Input, { Field } from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -13,12 +13,14 @@ export default function Login() {
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [errorCode, setErrorCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [waking, setWaking] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    setErrorCode('')
     setLoading(true)
     try {
       let user
@@ -38,6 +40,7 @@ export default function Login() {
       }
       navigate(user.role === 'SUPER_ADMIN' ? '/admin' : '/store', { replace: true })
     } catch (err) {
+      setErrorCode(err.response?.data?.code || '')
       setError(
         !err.response
           ? 'Server-ku ma jawaabin. Fadlan sug daqiiqad kadibna isku day mar kale.'
@@ -81,7 +84,19 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <Alert>{error}</Alert>}
+            {error && errorCode === 'ACCOUNT_DEACTIVATED' ? (
+              <div className="flex items-start gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3.5 dark:border-danger-500/20 dark:bg-danger-500/10">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger-100 dark:bg-danger-500/20">
+                  <UserX size={18} className="text-danger-600 dark:text-danger-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-danger-700 dark:text-danger-400">Account deactivated</p>
+                  <p className="mt-0.5 text-sm text-danger-600 dark:text-danger-300">{error}</p>
+                </div>
+              </div>
+            ) : (
+              error && <Alert>{error}</Alert>
+            )}
             {waking && (
               <Alert tone="info">Server-ku wuu soo baraarugayaa, fadlan sug ilaa 10 sekan...</Alert>
             )}

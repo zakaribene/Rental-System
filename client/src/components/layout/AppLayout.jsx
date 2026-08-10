@@ -16,6 +16,7 @@ const titles = {
   '/store/products': 'Products',
   '/store/customers': 'Customers',
   '/store/rentals': 'Rentals',
+  '/store/sales': 'Sales',
   '/store/payments': 'Payments',
   '/store/reports': 'Reports',
   '/store/users': 'Staff',

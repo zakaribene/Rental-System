@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Package, Search, ImageOff, Trash2, Pencil, Upload, X, Eye } from 'lucide-react'
+import { Navigate } from 'react-router-dom'
+import { Plus, Package, Search, ImageOff, Trash2, Pencil, X, Eye, Tags, DollarSign, ImagePlus, Tag } from 'lucide-react'
 import { listProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../../api/products'
+import { listCategories, createCategory, deleteCategory } from '../../api/categories'
+import { getMyStore } from '../../api/myStore'
+import usePermissions from '../../hooks/usePermissions'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Pagination from '../../components/ui/Pagination'
@@ -8,22 +12,28 @@ import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
-import { StatusBadge } from '../../components/ui/Badge'
+import CategoryPicker from '../../components/ui/CategoryPicker'
+import SectionLabel from '../../components/ui/SectionLabel'
+import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
 import { formatMoney } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
 
 const emptyForm = {
   name: '',
-  category: 'bag',
+  category: '',
+  listingType: 'RENT',
   rentPrice: '',
   depositPrice: '',
+  salePrice: '',
+  stockQty: '',
   imageUrl: '',
   plateNumber: '',
   status: 'available',
 }
 
 export default function Products() {
+  const { can, loaded } = usePermissions()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -35,6 +45,9 @@ export default function Products() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [viewProduct, setViewProduct] = useState(null)
+  const [store, setStore] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [categoriesModalOpen, setCategoriesModalOpen] = useState(false)
   const fileInputRef = useRef(null)
 
   const load = () => {
@@ -44,7 +57,13 @@ export default function Products() {
       .finally(() => setLoading(false))
   }
 
+  const loadCategories = () => listCategories().then(setCategories)
+
   useEffect(load, [statusFilter])
+  useEffect(() => {
+    getMyStore().then(setStore).catch(() => setStore(null))
+    loadCategories()
+  }, [])
 
   const query = search.trim().toLowerCase()
   const filtered = query
@@ -63,9 +82,12 @@ export default function Products() {
     setEditing(product)
     setForm({
       name: product.name,
-      category: product.category || 'bag',
-      rentPrice: product.rentPrice,
+      category: product.category || '',
+      listingType: product.listingType || 'RENT',
+      rentPrice: product.rentPrice || '',
       depositPrice: product.depositPrice || '',
+      salePrice: product.salePrice || '',
+      stockQty: product.stockQty ?? '',
       imageUrl: product.imageUrl || '',
       plateNumber: product.plateNumber || '',
       status: product.status,
@@ -80,11 +102,13 @@ export default function Products() {
     setSaving(true)
     const payload = {
       name: form.name,
-      category: form.category,
-      rentPrice: Number(form.rentPrice),
-      depositPrice: form.depositPrice === '' ? undefined : Number(form.depositPrice),
+      category: form.category || undefined,
+      listingType: form.listingType,
       imageUrl: form.imageUrl || undefined,
       plateNumber: form.plateNumber || undefined,
+      ...(form.listingType === 'SALE'
+        ? { salePrice: Number(form.salePrice), stockQty: Number(form.stockQty) }
+        : { rentPrice: Number(form.rentPrice), depositPrice: form.depositPrice === '' ? undefined : Number(form.depositPrice) }),
     }
     try {
       if (editing) {
@@ -123,15 +147,22 @@ export default function Products() {
     load()
   }
 
+  if (loaded && !can('products')) return <Navigate to="/store" replace />
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
         title="Products"
         subtitle="Everything your store has available to rent out."
         action={
-          <Button icon={Plus} onClick={openCreate}>
-            New product
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" icon={Tags} onClick={() => setCategoriesModalOpen(true)}>
+              Categories
+            </Button>
+            <Button icon={Plus} onClick={openCreate}>
+              New product
+            </Button>
+          </div>
         }
       />
 
@@ -194,10 +225,20 @@ export default function Products() {
                     </div>
                   ),
                 },
-                { key: 'category', header: 'Category', render: (row) => <span className="capitalize">{row.category || 'other'}</span> },
+                { key: 'category', header: 'Category', render: (row) => row.category || '—' },
                 { key: 'plateNumber', header: 'Plate', render: (row) => row.plateNumber || '—' },
-                { key: 'rentPrice', header: 'Rent price', render: (row) => formatMoney(row.rentPrice) },
+                ...(store?.salesEnabled
+                  ? [{ key: 'listingType', header: 'Type', render: (row) => <Badge tone={row.listingType === 'SALE' ? 'info' : 'neutral'}>{row.listingType === 'SALE' ? 'Sale' : 'Rent'}</Badge> }]
+                  : []),
+                {
+                  key: 'price',
+                  header: 'Price',
+                  render: (row) => (row.listingType === 'SALE' ? formatMoney(row.salePrice) : formatMoney(row.rentPrice)),
+                },
                 { key: 'depositPrice', header: 'Deposit', render: (row) => (row.depositPrice ? formatMoney(row.depositPrice) : '—') },
+                ...(store?.salesEnabled
+                  ? [{ key: 'stockQty', header: 'Stock', render: (row) => (row.listingType === 'SALE' ? row.stockQty : '—') }]
+                  : []),
                 { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
                 {
                   key: 'actions',
@@ -207,8 +248,12 @@ export default function Products() {
                   render: (row) => (
                     <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button size="sm" variant="secondary" icon={Eye} onClick={() => setViewProduct(row)} />
-                      <Button size="sm" variant="secondary" icon={Pencil} onClick={() => openEdit(row)} />
-                      <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(row)} />
+                      {can('products', 'edit') && (
+                        <Button size="sm" variant="secondary" icon={Pencil} onClick={() => openEdit(row)} />
+                      )}
+                      {can('products', 'delete') && (
+                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(row)} />
+                      )}
                     </div>
                   ),
                 },
@@ -224,6 +269,8 @@ export default function Products() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? 'Edit product' : 'Add a new product'}
+        subtitle={editing ? editing.name : 'Fill in the details below to list a new item.'}
+        size="lg"
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
@@ -238,6 +285,8 @@ export default function Products() {
         <form id="product-form" onSubmit={handleSubmit} className="space-y-4">
           {error && <Alert>{error}</Alert>}
 
+          <SectionLabel>Details</SectionLabel>
+
           <Field label="Product name" required>
             <Input
               value={form.name}
@@ -248,12 +297,12 @@ export default function Products() {
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Category">
-              <Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-                <option value="bag">Bag</option>
-                <option value="clothing">Clothing</option>
-                <option value="other">Other</option>
-              </Select>
+            <Field label="Category" hint={categories.length === 0 ? 'Add one via "Categories" above' : undefined}>
+              <CategoryPicker
+                categories={categories}
+                value={form.category}
+                onChange={(name) => setForm((f) => ({ ...f, category: name }))}
+              />
             </Field>
             {editing && (
               <Field label="Status">
@@ -267,29 +316,72 @@ export default function Products() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Rent price" required>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.rentPrice}
-                onChange={(e) => setForm((f) => ({ ...f, rentPrice: e.target.value }))}
-                placeholder="0.00"
-                required
-              />
+          {store?.salesEnabled && (
+            <Field label="Listing type" hint="Rent it out, or sell it and track stock">
+              <Select value={form.listingType} onChange={(e) => setForm((f) => ({ ...f, listingType: e.target.value }))}>
+                <option value="RENT">Rent</option>
+                <option value="SALE">Sale</option>
+              </Select>
             </Field>
-            <Field label="Deposit price" hint="Optional">
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.depositPrice}
-                onChange={(e) => setForm((f) => ({ ...f, depositPrice: e.target.value }))}
-                placeholder="0.00"
-              />
-            </Field>
-          </div>
+          )}
+
+          <SectionLabel>Pricing{form.listingType === 'SALE' && store?.salesEnabled ? ' & stock' : ''}</SectionLabel>
+
+          {form.listingType === 'SALE' && store?.salesEnabled ? (
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Sale price" required>
+                <Input
+                  icon={DollarSign}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.salePrice}
+                  onChange={(e) => setForm((f) => ({ ...f, salePrice: e.target.value }))}
+                  placeholder="0.00"
+                  required
+                />
+              </Field>
+              <Field label="Stock quantity" required>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.stockQty}
+                  onChange={(e) => setForm((f) => ({ ...f, stockQty: e.target.value }))}
+                  placeholder="0"
+                  required
+                />
+              </Field>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Rent price" required>
+                <Input
+                  icon={DollarSign}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.rentPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, rentPrice: e.target.value }))}
+                  placeholder="0.00"
+                  required
+                />
+              </Field>
+              <Field label="Deposit price" hint="Optional">
+                <Input
+                  icon={DollarSign}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.depositPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, depositPrice: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </Field>
+            </div>
+          )}
+
+          <SectionLabel>Media</SectionLabel>
 
           <Field label="Photo" hint="Optional — JPG, PNG, WEBP or GIF, up to 5MB">
             <input
@@ -300,14 +392,15 @@ export default function Products() {
               className="hidden"
             />
             {form.imageUrl ? (
-              <div className="relative w-40 overflow-hidden rounded-lg border border-ink-200">
+              <div className="group relative w-44 overflow-hidden rounded-xl border border-ink-200 shadow-sm dark:border-ink-700">
                 <img src={form.imageUrl} alt="Preview" className="aspect-square w-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-ink-950/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                 <button
                   type="button"
                   onClick={() => setForm((f) => ({ ...f, imageUrl: '' }))}
-                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink-900/70 text-white hover:bg-ink-900"
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-ink-900/70 text-white backdrop-blur transition-colors hover:bg-danger-600"
                 >
-                  <X size={13} />
+                  <X size={14} />
                 </button>
               </div>
             ) : (
@@ -315,13 +408,15 @@ export default function Products() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="flex h-24 w-40 flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-ink-200 text-ink-400 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:opacity-60"
+                className="flex h-28 w-44 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-ink-200 bg-ink-50/50 text-ink-400 transition-all hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-600 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800/40 dark:hover:bg-primary-500/10"
               >
                 {uploading ? (
                   <Spinner size={20} />
                 ) : (
                   <>
-                    <Upload size={18} />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-ink-100 dark:bg-ink-800 dark:ring-ink-700">
+                      <ImagePlus size={16} />
+                    </div>
                     <span className="text-xs font-medium">Upload photo</span>
                   </>
                 )}
@@ -371,20 +466,35 @@ export default function Products() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-ink-400">Category</p>
-                <p className="font-semibold capitalize text-ink-800 dark:text-ink-100">{viewProduct.category || 'other'}</p>
+                <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.category || '—'}</p>
               </div>
               <div>
                 <p className="text-ink-400">Status</p>
                 <StatusBadge status={viewProduct.status} />
               </div>
-              <div>
-                <p className="text-ink-400">Rent price</p>
-                <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(viewProduct.rentPrice)}</p>
-              </div>
-              <div>
-                <p className="text-ink-400">Deposit price</p>
-                <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.depositPrice ? formatMoney(viewProduct.depositPrice) : '—'}</p>
-              </div>
+              {viewProduct.listingType === 'SALE' ? (
+                <>
+                  <div>
+                    <p className="text-ink-400">Sale price</p>
+                    <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(viewProduct.salePrice)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-400">Stock</p>
+                    <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.stockQty}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-ink-400">Rent price</p>
+                    <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(viewProduct.rentPrice)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-400">Deposit price</p>
+                    <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.depositPrice ? formatMoney(viewProduct.depositPrice) : '—'}</p>
+                  </div>
+                </>
+              )}
               {viewProduct.plateNumber && (
                 <div>
                   <p className="text-ink-400">Plate number</p>
@@ -395,6 +505,80 @@ export default function Products() {
           </div>
         )}
       </Modal>
+
+      <CategoriesModal
+        open={categoriesModalOpen}
+        onClose={() => setCategoriesModalOpen(false)}
+        categories={categories}
+        reload={loadCategories}
+      />
     </div>
+  )
+}
+
+function CategoriesModal({ open, onClose, categories, reload }) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState('')
+
+  const handleAdd = async (e) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setError('')
+    setSaving(true)
+    try {
+      await createCategory({ name: name.trim() })
+      setName('')
+      reload()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to add category'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (category) => {
+    setDeletingId(category._id)
+    try {
+      await deleteCategory(category._id)
+      reload()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to delete category'))
+    } finally {
+      setDeletingId('')
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Categories" subtitle="Organize your products into custom categories">
+      <div className="space-y-4">
+        {error && <Alert>{error}</Alert>}
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <Input icon={Tag} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bags, Clothing, Electronics" className="flex-1" />
+          <Button type="submit" loading={saving}>
+            Add
+          </Button>
+        </form>
+        <div className="space-y-2">
+          {categories.length === 0 && <p className="text-sm text-ink-400">No categories yet.</p>}
+          {categories.map((c) => (
+            <div key={c._id} className="flex items-center justify-between rounded-lg border border-ink-100 px-3 py-2 dark:border-ink-700">
+              <div className="flex items-center gap-2.5">
+                <Tag size={14} className="text-ink-400" />
+                <span className="text-sm font-medium text-ink-800 dark:text-ink-100">{c.name}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Trash2}
+                loading={deletingId === c._id}
+                onClick={() => handleDelete(c)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </Modal>
   )
 }

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
@@ -11,9 +10,9 @@ import {
   Store as StoreIcon,
   KeyRound,
   LogIn,
-  MoreVertical,
   Pencil,
   Power,
+  ShoppingBag,
 } from 'lucide-react'
 import { listStores, createStore, updateStore, resetStorePassword, impersonateStore } from '../../api/stores'
 import Card from '../../components/ui/Card'
@@ -23,9 +22,10 @@ import usePagination from '../../hooks/usePagination'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field } from '../../components/ui/Input'
+import RowActionsMenu from '../../components/ui/RowActionsMenu'
 import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
-import { formatDate, formatRelativeTime, cn } from '../../lib/utils'
+import { formatDate, formatRelativeTime } from '../../lib/utils'
 import { apiErrorMessage, getAccessToken } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { stashAdminSession } from '../../components/layout/ImpersonationBar'
@@ -118,6 +118,11 @@ export default function Stores() {
     load()
   }
 
+  const toggleSalesFeature = async (store) => {
+    await updateStore(store._id, { salesEnabled: !store.salesEnabled })
+    load()
+  }
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
@@ -185,6 +190,13 @@ export default function Stores() {
                 { key: 'ownerPhone', header: 'Phone' },
                 { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
                 {
+                  key: 'sales',
+                  header: 'Sales',
+                  render: (row) => (
+                    <Badge tone={row.salesEnabled ? 'success' : 'neutral'}>{row.salesEnabled ? 'Enabled' : 'Disabled'}</Badge>
+                  ),
+                },
+                {
                   key: 'subscription',
                   header: 'Subscription',
                   render: (row) => (
@@ -229,12 +241,26 @@ export default function Stores() {
                   className: 'text-right',
                   render: (row) => (
                     <RowActionsMenu
-                      store={row}
-                      impersonating={impersonatingId === row._id}
-                      onImpersonate={() => handleImpersonate(row)}
-                      onEdit={() => openEdit(row)}
-                      onResetPassword={() => setResetTarget(row)}
-                      onToggleStatus={() => toggleStatus(row)}
+                      loading={impersonatingId === row._id}
+                      items={[
+                        { key: 'impersonate', label: 'Login as store', icon: LogIn, onClick: () => handleImpersonate(row) },
+                        { key: 'edit', label: 'Edit', icon: Pencil, onClick: () => openEdit(row) },
+                        { key: 'reset', label: 'Reset password', icon: KeyRound, onClick: () => setResetTarget(row) },
+                        {
+                          key: 'sales',
+                          label: row.salesEnabled ? 'Disable Sales' : 'Enable Sales',
+                          icon: ShoppingBag,
+                          onClick: () => toggleSalesFeature(row),
+                        },
+                        {
+                          key: 'status',
+                          label: row.status === 'active' ? 'Deactivate' : 'Activate',
+                          icon: Power,
+                          tone: row.status === 'active' ? 'danger' : 'success',
+                          divider: true,
+                          onClick: () => toggleStatus(row),
+                        },
+                      ]}
                     />
                   ),
                 },
@@ -313,107 +339,6 @@ export default function Stores() {
 
       <ResetPasswordModal store={resetTarget} onClose={() => setResetTarget(null)} />
     </div>
-  )
-}
-
-function RowActionsMenu({ store, impersonating, onImpersonate, onEdit, onResetPassword, onToggleStatus }) {
-  const [open, setOpen] = useState(false)
-  const [coords, setCoords] = useState(null)
-  const buttonRef = useRef(null)
-  const menuRef = useRef(null)
-
-  useEffect(() => {
-    if (!open) return
-
-    const updateCoords = () => {
-      const rect = buttonRef.current?.getBoundingClientRect()
-      if (rect) setCoords({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
-    }
-    updateCoords()
-
-    const handleClickOutside = (e) => {
-      if (
-        !buttonRef.current?.contains(e.target) &&
-        !menuRef.current?.contains(e.target)
-      ) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    // Menu tracks the trigger button's position — anything that could move
-    // it (scroll inside the table, or a window resize) needs to reposition
-    // the portal, since it renders outside the table's overflow container.
-    window.addEventListener('scroll', updateCoords, true)
-    window.addEventListener('resize', updateCoords)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      window.removeEventListener('scroll', updateCoords, true)
-      window.removeEventListener('resize', updateCoords)
-    }
-  }, [open])
-
-  const run = (fn) => {
-    setOpen(false)
-    fn()
-  }
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-100"
-        title="Actions"
-      >
-        {impersonating ? <Spinner size={16} /> : <MoreVertical size={18} />}
-      </button>
-
-      {open &&
-        coords &&
-        createPortal(
-          <div
-            ref={menuRef}
-            style={{ position: 'fixed', top: coords.top, right: coords.right }}
-            className="z-50 w-56 overflow-hidden rounded-xl border border-ink-100 bg-white py-1.5 text-left shadow-card animate-fadeIn dark:border-ink-800 dark:bg-ink-900"
-          >
-            <button
-              onClick={() => run(onImpersonate)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800"
-            >
-              <LogIn size={16} />
-              Login as store
-            </button>
-            <button
-              onClick={() => run(onEdit)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800"
-            >
-              <Pencil size={16} />
-              Edit
-            </button>
-            <button
-              onClick={() => run(onResetPassword)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800"
-            >
-              <KeyRound size={16} />
-              Reset password
-            </button>
-            <div className="my-1.5 border-t border-ink-100 dark:border-ink-800" />
-            <button
-              onClick={() => run(onToggleStatus)}
-              className={cn(
-                'flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors',
-                store.status === 'active'
-                  ? 'text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-500/10'
-                  : 'text-success-600 hover:bg-success-50 dark:hover:bg-success-500/10'
-              )}
-            >
-              <Power size={16} />
-              {store.status === 'active' ? 'Deactivate' : 'Activate'}
-            </button>
-          </div>,
-          document.body
-        )}
-    </>
   )
 }
 

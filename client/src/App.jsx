@@ -12,6 +12,7 @@ import StoreDashboard from './pages/store/Dashboard'
 import Products from './pages/store/Products'
 import Customers from './pages/store/Customers'
 import Rentals from './pages/store/Rentals'
+import Sales from './pages/store/Sales'
 import Payments from './pages/store/Payments'
 import Reports from './pages/store/Reports'
 import StaffUsers from './pages/store/Users'
@@ -52,6 +53,7 @@ export default function App() {
                   <Route path="/store/products" element={<Products />} handle={{ title: 'Products' }} />
                   <Route path="/store/customers" element={<Customers />} handle={{ title: 'Customers' }} />
                   <Route path="/store/rentals" element={<Rentals />} handle={{ title: 'Rentals' }} />
+                  <Route path="/store/sales" element={<Sales />} handle={{ title: 'Sales' }} />
                   <Route path="/store/payments" element={<Payments />} handle={{ title: 'Payments' }} />
                   <Route path="/store/reports" element={<Reports />} handle={{ title: 'Reports' }} />
                   <Route element={<RoleRoute roles={['STORE_OWNER']} />}>

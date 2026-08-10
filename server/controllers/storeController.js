@@ -77,10 +77,17 @@ const getStoreById = async (req, res, next) => {
 
 const updateStore = async (req, res, next) => {
   try {
-    const { storeName, ownerName, status } = req.body;
+    const { storeName, ownerName, status, salesEnabled } = req.body;
     const store = await Store.findByIdAndUpdate(
       req.params.id,
-      { $set: { ...(storeName && { storeName }), ...(ownerName && { ownerName }), ...(status && { status }) } },
+      {
+        $set: {
+          ...(storeName && { storeName }),
+          ...(ownerName && { ownerName }),
+          ...(status && { status }),
+          ...(salesEnabled !== undefined && { salesEnabled })
+        }
+      },
       { new: true }
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
