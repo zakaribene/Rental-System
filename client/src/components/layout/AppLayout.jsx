@@ -12,6 +12,7 @@ const titles = {
   '/admin/stores': 'Stores',
   '/admin/notifications': 'Notifications',
   '/admin/subscriptions': 'Subscriptions',
+  '/admin/activity-log': 'Activity Log',
   '/store': 'Overview',
   '/store/products': 'Products',
   '/store/customers': 'Customers',
@@ -19,6 +20,7 @@ const titles = {
   '/store/sales': 'Sales',
   '/store/payments': 'Payments',
   '/store/reports': 'Reports',
+  '/store/activity-log': 'Activity Log',
   '/store/users': 'Staff',
 }
 

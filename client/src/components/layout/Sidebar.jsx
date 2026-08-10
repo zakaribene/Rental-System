@@ -13,6 +13,7 @@ import {
   Sparkles,
   Megaphone,
   CalendarClock,
+  History,
   X,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
@@ -25,6 +26,7 @@ const superAdminNav = [
   { to: '/admin/stores', label: 'Stores', icon: Building2 },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: CalendarClock },
   { to: '/admin/notifications', label: 'Notifications', icon: Megaphone },
+  { to: '/admin/activity-log', label: 'Activity Log', icon: History },
 ]
 
 const storeNav = [
@@ -34,6 +36,7 @@ const storeNav = [
   { to: '/store/rentals', label: 'Rentals', icon: ClipboardList, module: 'rentals' },
   { to: '/store/payments', label: 'Payments', icon: Wallet, module: 'payments' },
   { to: '/store/reports', label: 'Reports', icon: BarChart3, module: 'reports' },
+  { to: '/store/activity-log', label: 'Activity Log', icon: History, module: 'activityLog' },
 ]
 
 export default function Sidebar({ open = false, onClose }) {

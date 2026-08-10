@@ -9,6 +9,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
+const logActivity = require("../middleware/activityLogger");
 const { uploadCustomerPhoto, uploadCustomerIdDocument } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
@@ -50,7 +51,7 @@ router.post("/upload-id-document", uploadCustomerIdDocument.single("image"), (re
  *     responses:
  *       200: { description: List of customers }
  */
-router.post("/", createCustomer);
+router.post("/", logActivity("customers", "create", (req) => `Added customer "${req.body.fullName}"`), createCustomer);
 router.get("/", getCustomers);
 
 /**
@@ -89,6 +90,11 @@ router.get("/", getCustomers);
  *       404: { description: Not found }
  */
 router.get("/:id", getCustomerById);
-router.patch("/:id", requireModulePermission("customers", "edit"), updateCustomer);
+router.patch(
+  "/:id",
+  requireModulePermission("customers", "edit"),
+  logActivity("customers", "update", (req) => `Updated customer${req.body.fullName ? ` "${req.body.fullName}"` : ` (…${req.params.id.slice(-6)})`}`),
+  updateCustomer
+);
 
 module.exports = router;

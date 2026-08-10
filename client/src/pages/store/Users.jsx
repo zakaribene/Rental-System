@@ -22,6 +22,7 @@ const PERMISSION_MODULES = [
   { key: 'sales', label: 'Sales', edit: true, delete: false },
   { key: 'payments', label: 'Payments', edit: false, delete: false },
   { key: 'reports', label: 'Reports', edit: false, delete: false },
+  { key: 'activityLog', label: 'Activity Log', edit: false, delete: false },
 ]
 
 // New staff start with everything open — the owner opts specific things

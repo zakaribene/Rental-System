@@ -5,6 +5,7 @@ const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
 const requireStoreFeature = require("../middleware/storeFeatureMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
+const logActivity = require("../middleware/activityLogger");
 
 const router = express.Router();
 
@@ -73,7 +74,7 @@ router.use(
  *     responses:
  *       200: { description: List of sales }
  */
-router.post("/", createSale);
+router.post("/", logActivity("sales", "create", () => "Recorded a new sale"), createSale);
 router.get("/", getSales);
 
 /**
@@ -128,6 +129,11 @@ router.get("/", getSales);
  *       409: { description: Not enough stock, or existing debt settlements exceed the new total }
  */
 router.get("/:id", getSaleById);
-router.patch("/:id", requireModulePermission("sales", "edit"), updateSale);
+router.patch(
+  "/:id",
+  requireModulePermission("sales", "edit"),
+  logActivity("sales", "update", (req) => `Edited sale #${req.params.id.slice(-6)}`),
+  updateSale
+);
 
 module.exports = router;

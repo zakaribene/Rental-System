@@ -4,6 +4,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
+const logActivity = require("../middleware/activityLogger");
 const { uploadDocument } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
@@ -78,7 +79,7 @@ router.post("/upload-document", uploadDocument.single("image"), (req, res) => {
  *     responses:
  *       200: { description: List of rentals }
  */
-router.post("/", createRental);
+router.post("/", logActivity("rentals", "create", () => "Created a new rental"), createRental);
 router.get("/", getRentals);
 
 /**
@@ -126,7 +127,12 @@ router.get("/", getRentals);
  *       409: { description: Already returned, or a newly-added product isn't available }
  */
 router.get("/:id", getRentalById);
-router.patch("/:id", requireModulePermission("rentals", "edit"), updateRental);
+router.patch(
+  "/:id",
+  requireModulePermission("rentals", "edit"),
+  logActivity("rentals", "update", (req) => `Edited rental #${req.params.id.slice(-6)}`),
+  updateRental
+);
 
 /**
  * @swagger
@@ -158,7 +164,12 @@ router.patch("/:id", requireModulePermission("rentals", "edit"), updateRental);
  *       404: { description: Not found }
  *       409: { description: Rental already returned }
  */
-router.post("/:id/deposits", requireModulePermission("rentals", "edit"), addRentalDeposit);
+router.post(
+  "/:id/deposits",
+  requireModulePermission("rentals", "edit"),
+  logActivity("rentals", "deposit", (req) => `Added a ${req.body.depositType} deposit to rental #${req.params.id.slice(-6)}`),
+  addRentalDeposit
+);
 
 /**
  * @swagger
@@ -195,6 +206,10 @@ router.post("/:id/deposits", requireModulePermission("rentals", "edit"), addRent
  *       404: { description: Not found }
  *       409: { description: Already returned }
  */
-router.post("/:id/return", returnRental);
+router.post(
+  "/:id/return",
+  logActivity("rentals", "return", (req) => `Processed return for rental #${req.params.id.slice(-6)}`),
+  returnRental
+);
 
 module.exports = router;

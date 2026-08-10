@@ -4,6 +4,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
+const logActivity = require("../middleware/activityLogger");
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *     responses:
  *       200: { description: List of categories }
  */
-router.post("/", createCategory);
+router.post("/", logActivity("categories", "create", (req) => `Created category "${req.body.name}"`), createCategory);
 router.get("/", getCategories);
 
 /**
@@ -69,7 +70,17 @@ router.get("/", getCategories);
  *       200: { description: Deleted }
  *       404: { description: Not found }
  */
-router.patch("/:id", requireModulePermission("products", "edit"), updateCategory);
-router.delete("/:id", requireModulePermission("products", "delete"), deleteCategory);
+router.patch(
+  "/:id",
+  requireModulePermission("products", "edit"),
+  logActivity("categories", "update", (req) => `Renamed category to "${req.body.name}"`),
+  updateCategory
+);
+router.delete(
+  "/:id",
+  requireModulePermission("products", "delete"),
+  logActivity("categories", "delete", (req) => `Deleted category (…${req.params.id.slice(-6)})`),
+  deleteCategory
+);
 
 module.exports = router;

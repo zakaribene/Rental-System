@@ -19,12 +19,16 @@ const saleRoutes = require("./routes/saleRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const myStoreRoutes = require("./routes/myStoreRoutes");
+const activityLogRoutes = require("./routes/activityLogRoutes");
+const adminActivityLogRoutes = require("./routes/adminActivityLogRoutes");
 const { startOverdueJob } = require("./jobs/overdueJob");
 const { startSubscriptionJob } = require("./jobs/subscriptionJob");
+const { startActivityLogCleanupJob } = require("./jobs/activityLogCleanupJob");
 
 connectDB();
 startOverdueJob();
 startSubscriptionJob();
+startActivityLogCleanupJob();
 
 const app = express();
 
@@ -64,6 +68,8 @@ app.use("/api/sales", saleRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/my-store", myStoreRoutes);
+app.use("/api/activity-logs", activityLogRoutes);
+app.use("/api/admin/activity-logs", adminActivityLogRoutes);
 app.use("/api", paymentRoutes);
 
 app.use(errorHandler);

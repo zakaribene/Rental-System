@@ -11,6 +11,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
+const logActivity = require("../middleware/activityLogger");
 const { uploadProduct } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
@@ -53,7 +54,7 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *     responses:
  *       200: { description: List of products }
  */
-router.post("/", createProduct);
+router.post("/", logActivity("products", "create", (req) => `Created product "${req.body.name}"`), createProduct);
 router.get("/", getProducts);
 
 /**
@@ -130,7 +131,17 @@ router.post("/upload-image", uploadProduct.single("image"), uploadProductImage);
  *       404: { description: Not found }
  */
 router.get("/:id", getProductById);
-router.patch("/:id", requireModulePermission("products", "edit"), updateProduct);
-router.delete("/:id", requireModulePermission("products", "delete"), deleteProduct);
+router.patch(
+  "/:id",
+  requireModulePermission("products", "edit"),
+  logActivity("products", "update", (req) => `Updated product${req.body.name ? ` "${req.body.name}"` : ` (…${req.params.id.slice(-6)})`}`),
+  updateProduct
+);
+router.delete(
+  "/:id",
+  requireModulePermission("products", "delete"),
+  logActivity("products", "delete", (req) => `Deleted product (…${req.params.id.slice(-6)})`),
+  deleteProduct
+);
 
 module.exports = router;

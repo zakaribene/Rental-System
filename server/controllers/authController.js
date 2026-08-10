@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Store = require("../models/Store");
+const ActivityLog = require("../models/ActivityLog");
 const { generateAccessToken, generateRefreshToken } = require("../utils/tokenUtils");
 
 // In production the frontend (Vercel) and backend (Render) live on different
@@ -58,6 +59,17 @@ const login = async (req, res, next) => {
     user.lastLoginAt = new Date();
     user.lastActiveAt = new Date();
     await user.save();
+
+    // Store-scoped logins only — a SUPER_ADMIN login isn't "store activity".
+    if (user.storeId) {
+      ActivityLog.create({
+        storeId: user.storeId,
+        userId: user._id,
+        module: "auth",
+        action: "login",
+        description: `${user.name} logged in`
+      }).catch(() => {});
+    }
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
     res.json({

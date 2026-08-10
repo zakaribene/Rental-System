@@ -10,6 +10,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
+const logActivity = require("../middleware/activityLogger");
 
 const router = express.Router();
 
@@ -38,7 +39,11 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *     responses:
  *       200: { description: List of payment methods }
  */
-router.post("/payment-methods", createPaymentMethod);
+router.post(
+  "/payment-methods",
+  logActivity("payments", "create", (req) => `Added payment method "${req.body.name}"`),
+  createPaymentMethod
+);
 router.get("/payment-methods", getPaymentMethods);
 
 /**
@@ -64,7 +69,11 @@ router.get("/payment-methods", getPaymentMethods);
  *       200: { description: Updated payment method }
  *       404: { description: Not found }
  */
-router.patch("/payment-methods/:id", updatePaymentMethod);
+router.patch(
+  "/payment-methods/:id",
+  logActivity("payments", "update", (req) => `Updated payment method${req.body.name ? ` "${req.body.name}"` : ""}`),
+  updatePaymentMethod
+);
 
 /**
  * @swagger
@@ -110,7 +119,11 @@ router.patch("/payment-methods/:id", updatePaymentMethod);
  *     responses:
  *       200: { description: List of payments }
  */
-router.post("/payments", createPayment);
+router.post(
+  "/payments",
+  logActivity("payments", "settle", (req) => `Recorded a ${(req.body.type || "").replace(/_/g, " ").toLowerCase()} payment of ${req.body.amount}`),
+  createPayment
+);
 router.get("/payments", getPayments);
 
 module.exports = router;

@@ -3,6 +3,7 @@ const { createUser, getUsers, updateUser } = require("../controllers/userControl
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const logActivity = require("../middleware/activityLogger");
 
 const router = express.Router();
 
@@ -37,7 +38,12 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *     responses:
  *       200: { description: List of users }
  */
-router.post("/", requireRole("STORE_OWNER"), createUser);
+router.post(
+  "/",
+  requireRole("STORE_OWNER"),
+  logActivity("staff", "create", (req) => `Added staff member "${req.body.name}"`),
+  createUser
+);
 router.get("/", getUsers);
 
 /**
@@ -67,6 +73,11 @@ router.get("/", getUsers);
  *       200: { description: Updated user }
  *       404: { description: Not found }
  */
-router.patch("/:id", requireRole("STORE_OWNER"), updateUser);
+router.patch(
+  "/:id",
+  requireRole("STORE_OWNER"),
+  logActivity("staff", "update", (req) => `Updated staff member (…${req.params.id.slice(-6)})`),
+  updateUser
+);
 
 module.exports = router;

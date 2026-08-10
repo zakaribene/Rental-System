@@ -27,7 +27,8 @@ const userSchema = new mongoose.Schema({
     rentals: { type: modulePermissionSchema, default: () => ({}) },
     sales: { type: modulePermissionSchema, default: () => ({}) },
     payments: { type: modulePermissionSchema, default: () => ({}) },
-    reports: { type: modulePermissionSchema, default: () => ({}) }
+    reports: { type: modulePermissionSchema, default: () => ({}) },
+    activityLog: { type: modulePermissionSchema, default: () => ({}) }
   },
   lastLoginAt: { type: Date, default: null },
   lastActiveAt: { type: Date, default: null },
