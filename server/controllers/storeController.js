@@ -177,6 +177,8 @@ const updateSubscription = async (req, res, next) => {
           subscriptionStatus: "active",
           gracePeriodEndsAt: null,
           graceDays: null,
+          graceHours: null,
+          graceMinutes: null,
           graceMessage: null,
           deactivatedAt: null,
           status: "active"
@@ -193,10 +195,13 @@ const updateSubscription = async (req, res, next) => {
 
 const grantGracePeriod = async (req, res, next) => {
   try {
-    const { days, bannerColor, message } = req.body;
-    const numDays = Number(days);
-    if (!numDays || numDays <= 0) {
-      return res.status(400).json({ message: "days must be a positive number" });
+    const { bannerColor, message } = req.body;
+    const numDays = Number(req.body.days) || 0;
+    const numHours = Number(req.body.hours) || 0;
+    const numMinutes = Number(req.body.minutes) || 0;
+    const totalMs = numDays * 24 * 60 * 60 * 1000 + numHours * 60 * 60 * 1000 + numMinutes * 60 * 1000;
+    if (totalMs <= 0) {
+      return res.status(400).json({ message: "Enter a positive grace period duration" });
     }
     const now = new Date();
     const store = await Store.findByIdAndUpdate(
@@ -204,8 +209,10 @@ const grantGracePeriod = async (req, res, next) => {
       {
         $set: {
           subscriptionStatus: "grace",
-          gracePeriodEndsAt: new Date(now.getTime() + numDays * 24 * 60 * 60 * 1000),
+          gracePeriodEndsAt: new Date(now.getTime() + totalMs),
           graceDays: numDays,
+          graceHours: numHours,
+          graceMinutes: numMinutes,
           status: "active",
           deactivatedAt: null,
           ...(bannerColor && { graceBannerColor: bannerColor }),
@@ -230,6 +237,8 @@ const clearGracePeriod = async (req, res, next) => {
           subscriptionStatus: "active",
           gracePeriodEndsAt: null,
           graceDays: null,
+          graceHours: null,
+          graceMinutes: null,
           graceMessage: null
         }
       },

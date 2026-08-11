@@ -35,7 +35,9 @@ const storeNav = [
   { to: '/store/customers', label: 'Customers', icon: Users, module: 'customers' },
   { to: '/store/rentals', label: 'Rentals', icon: ClipboardList, module: 'rentals' },
   { to: '/store/payments', label: 'Payments', icon: Wallet, module: 'payments' },
+  { to: '/store/sales', label: 'Sales', icon: ShoppingBag, module: 'sales', requiresSalesEnabled: true },
   { to: '/store/reports', label: 'Reports', icon: BarChart3, module: 'reports' },
+  { to: '/store/users', label: 'Staff', icon: UserCog, ownerOnly: true },
   { to: '/store/activity-log', label: 'Activity Log', icon: History, module: 'activityLog' },
 ]
 
@@ -43,9 +45,14 @@ export default function Sidebar({ open = false, onClose }) {
   const { user } = useAuth()
   const { can } = usePermissions()
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
-  const nav = (isSuperAdmin ? superAdminNav : storeNav).filter((item) => !item.module || can(item.module))
   const showUsers = user?.role === 'STORE_OWNER'
   const [salesEnabled, setSalesEnabled] = useState(false)
+  const nav = (isSuperAdmin ? superAdminNav : storeNav).filter((item) => {
+    if (item.module && !can(item.module)) return false
+    if (item.requiresSalesEnabled && !salesEnabled) return false
+    if (item.ownerOnly && !showUsers) return false
+    return true
+  })
 
   useEffect(() => {
     if (isSuperAdmin) return
@@ -106,40 +113,6 @@ export default function Sidebar({ open = false, onClose }) {
               {item.label}
             </NavLink>
           ))}
-
-          {!isSuperAdmin && salesEnabled && can('sales') && (
-            <NavLink
-              to="/store/sales"
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
-                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100'
-                )
-              }
-            >
-              <ShoppingBag size={18} strokeWidth={2.25} />
-              Sales
-            </NavLink>
-          )}
-
-          {showUsers && (
-            <NavLink
-              to="/store/users"
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
-                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100'
-                )
-              }
-            >
-              <UserCog size={18} strokeWidth={2.25} />
-              Staff
-            </NavLink>
-          )}
         </nav>
 
         <div className="border-t border-ink-100 p-4 dark:border-ink-800">

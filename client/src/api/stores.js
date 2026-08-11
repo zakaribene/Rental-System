@@ -17,7 +17,7 @@ export const impersonateStore = (id) => api.post(`/stores/${id}/impersonate`).th
 export const updateSubscription = (id, subscriptionEndsAt) =>
   api.patch(`/stores/${id}/subscription`, { subscriptionEndsAt }).then((r) => r.data)
 
-export const grantGracePeriod = (id, days, bannerColor, message) =>
-  api.post(`/stores/${id}/grace-period`, { days, bannerColor, message }).then((r) => r.data)
+export const grantGracePeriod = (id, days, hours, minutes, bannerColor, message) =>
+  api.post(`/stores/${id}/grace-period`, { days, hours, minutes, bannerColor, message }).then((r) => r.data)
 
 export const clearGracePeriod = (id) => api.delete(`/stores/${id}/grace-period`).then((r) => r.data)

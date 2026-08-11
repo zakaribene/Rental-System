@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Clock } from 'lucide-react'
 import { getMyStore } from '../../api/myStore'
 
 const POLL_INTERVAL = 3000
@@ -32,6 +32,14 @@ function formatCountdown(msRemaining) {
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+}
+
+function formatGraceDuration(store) {
+  const parts = []
+  if (store.graceDays > 0) parts.push(`${store.graceDays} maalmood`)
+  if (store.graceHours > 0) parts.push(`${store.graceHours} saacadood`)
+  if (store.graceMinutes > 0) parts.push(`${store.graceMinutes} daqiiqo`)
+  return parts.length ? parts.join(' iyo ') : `${store.graceDays || 0} maalmood`
 }
 
 export default function SubscriptionBanner() {
@@ -90,7 +98,7 @@ export default function SubscriptionBanner() {
 
   return (
     <div
-      className="relative isolate z-30 overflow-hidden shadow-lg"
+      className="relative isolate z-30 mx-3 overflow-hidden rounded-2xl shadow-lg sm:mx-4 lg:mx-6"
       style={{ background: `linear-gradient(to right, ${shadeColor(baseColor, -15)}, ${baseColor}, ${shadeColor(baseColor, 12)})` }}
     >
       <div
@@ -100,17 +108,20 @@ export default function SubscriptionBanner() {
             'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.5) 0, transparent 45%), radial-gradient(circle at 80% 80%, rgba(255,255,255,0.35) 0, transparent 40%)',
         }}
       />
-      <div className="relative mx-auto flex max-w-7xl flex-col items-center gap-1 px-4 py-3 text-center sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex max-w-5xl flex-col items-center gap-2.5 px-4 py-3 text-center sm:px-6 lg:px-8">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-inset ring-white/30">
             <AlertTriangle size={17} strokeWidth={2.25} color="#ffffff" />
           </span>
-          <p className="text-base font-bold sm:text-lg" style={{ color: '#ffffff' }}>
-            {store.graceMessage ||
-              `Subscription-kaagu wuu dhammaaday. Waxaa lagu siiyey ${store.graceDays} maalmood oo dheeraad ah. Fadlan bixi lacagta Subscription-ka inta muddadan ay socoto si adeeggaagu u sii shaqeeyo.`}
+          <p className="text-sm font-bold leading-snug sm:text-base" style={{ color: '#ffffff' }}>
+            {store.graceMessage || `Subscription-kaagu wuu dhammaaday. Waxaa lagu siiyey ${formatGraceDuration(store)} oo dheeraad ah. Fadlan bixi lacagta Subscription-ka inta muddadan ay socoto si adeeggaagu u sii shaqeeyo.`}
           </p>
         </div>
-        <p className="text-sm font-semibold text-white/90">Waxaa kuu haray: {countdownText}</p>
+        <div className="flex items-center gap-2 rounded-full bg-white/15 py-1.5 pl-3 pr-3.5 ring-1 ring-inset ring-white/25 backdrop-blur-sm">
+          <Clock size={15} strokeWidth={2.5} color="#ffffff" className="opacity-90" />
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-white/80">Waxaa kuu haray</span>
+          <span className="font-mono text-lg font-extrabold tabular-nums tracking-wider text-white sm:text-xl">{countdownText}</span>
+        </div>
       </div>
     </div>
   )

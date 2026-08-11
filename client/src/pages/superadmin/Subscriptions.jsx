@@ -11,8 +11,16 @@ import { apiErrorMessage } from '../../api/client'
 
 const BANNER_COLOR_PRESETS = ['#f59e0b', '#ef4444', '#6c4fff', '#3b82f6', '#10b981']
 
-function defaultGraceMessage(days) {
-  return `Subscription-kaagu wuu dhammaaday. Waxaa lagu siiyey ${days} maalmood oo dheeraad ah. Fadlan bixi lacagta Subscription-ka inta muddadan ay socoto si adeeggaagu u sii shaqeeyo.`
+function formatGraceDuration(days, hours, minutes) {
+  const parts = []
+  if (Number(days) > 0) parts.push(`${days} maalmood`)
+  if (Number(hours) > 0) parts.push(`${hours} saacadood`)
+  if (Number(minutes) > 0) parts.push(`${minutes} daqiiqo`)
+  return parts.length ? parts.join(' iyo ') : '0 daqiiqo'
+}
+
+function defaultGraceMessage(days, hours = '0', minutes = '0') {
+  return `Subscription-kaagu wuu dhammaaday. Waxaa lagu siiyey ${formatGraceDuration(days, hours, minutes)} oo dheeraad ah. Fadlan bixi lacagta Subscription-ka inta muddadan ay socoto si adeeggaagu u sii shaqeeyo.`
 }
 
 const ALL_STORES_ID = 'all'
@@ -123,8 +131,10 @@ export default function Subscriptions() {
   const [selected, setSelected] = useState(null)
   const [subscriptionEndsAt, setSubscriptionEndsAt] = useState('')
   const [graceDays, setGraceDays] = useState('3')
+  const [graceHours, setGraceHours] = useState('0')
+  const [graceMinutes, setGraceMinutes] = useState('0')
   const [bannerColor, setBannerColor] = useState('#f59e0b')
-  const [graceMessage, setGraceMessage] = useState(defaultGraceMessage('3'))
+  const [graceMessage, setGraceMessage] = useState(defaultGraceMessage('3', '0', '0'))
   const [messageTouched, setMessageTouched] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState('')
@@ -152,16 +162,25 @@ export default function Subscriptions() {
     setSelected(store)
     setSubscriptionEndsAt('')
     setGraceDays('3')
+    setGraceHours('0')
+    setGraceMinutes('0')
     setBannerColor(store.graceBannerColor || '#f59e0b')
-    setGraceMessage(store.graceMessage || defaultGraceMessage('3'))
+    setGraceMessage(store.graceMessage || defaultGraceMessage('3', '0', '0'))
     setMessageTouched(false)
     setError('')
     setSaved('')
   }
 
-  const handleGraceDaysChange = (value) => {
-    setGraceDays(value)
-    if (!messageTouched) setGraceMessage(defaultGraceMessage(value || '0'))
+  const handleGraceDurationChange = (field, value) => {
+    const next = {
+      days: field === 'days' ? value : graceDays,
+      hours: field === 'hours' ? value : graceHours,
+      minutes: field === 'minutes' ? value : graceMinutes
+    }
+    if (field === 'days') setGraceDays(value)
+    if (field === 'hours') setGraceHours(value)
+    if (field === 'minutes') setGraceMinutes(value)
+    if (!messageTouched) setGraceMessage(defaultGraceMessage(next.days || '0', next.hours || '0', next.minutes || '0'))
   }
 
   const handleRenew = async (e) => {
@@ -196,20 +215,22 @@ export default function Subscriptions() {
     e.preventDefault()
     setError('')
     setSaved('')
-    const days = Number(graceDays)
-    if (!days || days <= 0) {
-      setError('Enter a positive number of days.')
+    const days = Number(graceDays) || 0
+    const hours = Number(graceHours) || 0
+    const minutes = Number(graceMinutes) || 0
+    if (days <= 0 && hours <= 0 && minutes <= 0) {
+      setError('Enter a positive grace period duration.')
       return
     }
     setSaving('grace')
     try {
       const message = graceMessage.trim()
       if (selected._id === ALL_STORES_ID) {
-        await Promise.all(stores.map((s) => grantGracePeriod(s._id, days, bannerColor, message)))
+        await Promise.all(stores.map((s) => grantGracePeriod(s._id, days, hours, minutes, bannerColor, message)))
         load()
         setSaved(`Grace period granted to ${stores.length} store(s).`)
       } else {
-        const updated = await grantGracePeriod(selected._id, days, bannerColor, message)
+        const updated = await grantGracePeriod(selected._id, days, hours, minutes, bannerColor, message)
         setSelected(updated)
         setStores((prev) => prev.map((s) => (s._id === updated._id ? updated : s)))
         setSaved('Grace period granted.')
@@ -330,9 +351,17 @@ export default function Subscriptions() {
                 <div className="border-t border-ink-100 pt-5 dark:border-ink-800">
                   <form onSubmit={handleGrantGrace} className="space-y-4">
                     <p className="text-sm font-semibold text-ink-700 dark:text-ink-300">Grant grace period / reactivate</p>
-                    <Field label="Grace days" required>
-                      <Input type="number" min="1" value={graceDays} onChange={(e) => handleGraceDaysChange(e.target.value)} required />
-                    </Field>
+                    <div className="grid grid-cols-3 gap-3">
+                      <Field label="Days">
+                        <Input type="number" min="0" value={graceDays} onChange={(e) => handleGraceDurationChange('days', e.target.value)} />
+                      </Field>
+                      <Field label="Hours">
+                        <Input type="number" min="0" value={graceHours} onChange={(e) => handleGraceDurationChange('hours', e.target.value)} />
+                      </Field>
+                      <Field label="Minutes">
+                        <Input type="number" min="0" value={graceMinutes} onChange={(e) => handleGraceDurationChange('minutes', e.target.value)} />
+                      </Field>
+                    </div>
                     <Field label="Banner message" required hint="Shown to the store owner — edit it however you like.">
                       <Textarea
                         rows={3}

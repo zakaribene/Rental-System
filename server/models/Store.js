@@ -13,6 +13,8 @@ const storeSchema = new mongoose.Schema({
   subscriptionStatus: { type: String, enum: ["active", "grace", "expired"], default: "active" },
   gracePeriodEndsAt: { type: Date, default: null },
   graceDays: { type: Number, default: null },
+  graceHours: { type: Number, default: null },
+  graceMinutes: { type: Number, default: null },
   graceBannerColor: { type: String, default: "#f59e0b" },
   graceMessage: { type: String, default: null },
   deactivatedAt: { type: Date, default: null },
