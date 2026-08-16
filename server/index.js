@@ -55,7 +55,9 @@ app.use("/uploads", express.static("uploads"));
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+if (process.env.NODE_ENV !== "production") {
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 app.use("/api/auth", authRoutes);
 app.use("/api/stores", storeRoutes);
