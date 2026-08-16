@@ -1,8 +1,16 @@
+const mongoose = require("mongoose");
 const RentalTransaction = require("../models/RentalTransaction");
 const RentalDeposit = require("../models/RentalDeposit");
 const Payment = require("../models/Payment");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+
+// Frontend can send stray "null"/"" entries when nothing is selected —
+// keep only real ObjectIds so Mongoose casting doesn't blow up.
+const cleanIds = (arr) =>
+  (Array.isArray(arr) ? arr : [])
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map(String);
 
 // Shared by createRental (bundled at creation) and addRentalDeposit (added
 // later) — CASH deposits also record a Payment, GUARANTOR/DOCUMENT don't.
@@ -237,6 +245,10 @@ const returnRental = async (req, res, next) => {
       lateFee = 0
     } = req.body;
 
+    const okIds = cleanIds(itemsReturnedOk);
+    const missingIds = cleanIds(itemsMissing);
+    const damagedIds = cleanIds(itemsDamaged);
+
     const transaction = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId });
     if (!transaction) return res.status(404).json({ message: "Rental not found" });
     if (transaction.status === "returned") {
@@ -246,7 +258,7 @@ const returnRental = async (req, res, next) => {
     const deposits = await RentalDeposit.find({ transactionId: transaction._id, depositType: "CASH" });
     const cashDepositAlreadyPaid = deposits.reduce((sum, d) => sum + (d.cashAmount || 0), 0);
 
-    const costOfDamagedOrMissingItems = [...itemsMissing, ...itemsDamaged].reduce(
+    const costOfDamagedOrMissingItems = [...missingIds, ...damagedIds].reduce(
       (sum, productId) => sum + (Number(damageCosts[productId]) || 0),
       0
     );
@@ -265,9 +277,9 @@ const returnRental = async (req, res, next) => {
     transaction.status = "returned";
     transaction.returnDetails = {
       returnDate: new Date(),
-      itemsReturnedOk,
-      itemsMissing,
-      itemsDamaged,
+      itemsReturnedOk: okIds,
+      itemsMissing: missingIds,
+      itemsDamaged: damagedIds,
       depositRefunded,
       damageDebt,
       lateFee: resolvedLateFee,
@@ -275,14 +287,14 @@ const returnRental = async (req, res, next) => {
     };
     await transaction.save();
 
-    if (itemsReturnedOk.length) {
-      await Product.updateMany({ _id: { $in: itemsReturnedOk } }, { $set: { status: "available" } });
+    if (okIds.length) {
+      await Product.updateMany({ _id: { $in: okIds } }, { $set: { status: "available" } });
     }
-    if (itemsDamaged.length) {
-      await Product.updateMany({ _id: { $in: itemsDamaged } }, { $set: { status: "damaged" } });
+    if (damagedIds.length) {
+      await Product.updateMany({ _id: { $in: damagedIds } }, { $set: { status: "damaged" } });
     }
-    if (itemsMissing.length) {
-      await Product.updateMany({ _id: { $in: itemsMissing } }, { $set: { status: "lost" } });
+    if (missingIds.length) {
+      await Product.updateMany({ _id: { $in: missingIds } }, { $set: { status: "lost" } });
     }
 
     let refundPayment = null;
