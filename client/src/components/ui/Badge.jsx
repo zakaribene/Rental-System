@@ -42,6 +42,7 @@ const statusTone = {
   overdue: 'danger',
   damaged: 'warning',
   lost: 'danger',
+  cancelled: 'neutral',
 }
 
 export function StatusBadge({ status }) {

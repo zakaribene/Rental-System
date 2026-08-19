@@ -1,5 +1,5 @@
 const express = require("express");
-const { createRental, getRentals, getRentalById, updateRental, addRentalDeposit, returnRental } = require("../controllers/rentalController");
+const { createRental, getRentals, getRentalById, updateRental, addRentalDeposit, returnRental, cancelRental } = require("../controllers/rentalController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
@@ -75,7 +75,7 @@ router.post("/upload-document", uploadDocument.single("image"), (req, res) => {
  *     parameters:
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [active, returned, overdue] }
+ *         schema: { type: string, enum: [active, returned, overdue, cancelled] }
  *     responses:
  *       200: { description: List of rentals }
  */
@@ -210,6 +210,29 @@ router.post(
   "/:id/return",
   logActivity("rentals", "return", (req) => `Processed return for rental #${req.params.id.slice(-6)}`),
   returnRental
+);
+
+/**
+ * @swagger
+ * /rentals/{id}:
+ *   delete:
+ *     tags: [Rentals]
+ *     summary: Cancel a rental (soft-delete) and release its reserved units
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Rental cancelled }
+ *       404: { description: Not found }
+ *       409: { description: Rental is already returned or cancelled }
+ */
+router.delete(
+  "/:id",
+  requireModulePermission("rentals", "delete"),
+  logActivity("rentals", "delete", (req) => `Cancelled rental #${req.params.id.slice(-6)}`),
+  cancelRental
 );
 
 module.exports = router;

@@ -15,6 +15,8 @@ export const addRentalDeposit = (id, payload) => api.post(`/rentals/${id}/deposi
 
 export const returnRental = (id, payload) => api.post(`/rentals/${id}/return`, payload).then((r) => r.data)
 
+export const cancelRental = (id) => api.delete(`/rentals/${id}`).then((r) => r.data)
+
 export const uploadDepositDocument = (file) => {
   const formData = new FormData()
   formData.append('image', file)

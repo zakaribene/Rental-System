@@ -18,7 +18,7 @@ import { apiErrorMessage } from '../../api/client'
 const PERMISSION_MODULES = [
   { key: 'products', label: 'Products', edit: true, delete: true },
   { key: 'customers', label: 'Customers', edit: true, delete: false },
-  { key: 'rentals', label: 'Rentals', edit: true, delete: false },
+  { key: 'rentals', label: 'Rentals', edit: true, delete: true },
   { key: 'sales', label: 'Sales', edit: true, delete: false },
   { key: 'payments', label: 'Payments', edit: false, delete: false },
   { key: 'reports', label: 'Reports', edit: false, delete: false },

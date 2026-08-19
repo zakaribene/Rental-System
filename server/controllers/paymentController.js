@@ -63,6 +63,9 @@ const createPayment = async (req, res, next) => {
       if (!transaction) {
         return res.status(404).json({ message: "Rental not found" });
       }
+      if (transaction.status === "cancelled") {
+        return res.status(409).json({ message: "This rental was cancelled — no payment can be settled against it" });
+      }
       const remainingDebt = transaction.remainingDebt;
       if (remainingDebt <= 0) {
         return res.status(409).json({ message: "This rental has no remaining debt", remainingDebt: 0 });

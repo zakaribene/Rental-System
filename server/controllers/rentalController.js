@@ -4,6 +4,7 @@ const RentalDeposit = require("../models/RentalDeposit");
 const Payment = require("../models/Payment");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+const { reserveUnits, releaseUnits, removeFromFleet } = require("../utils/productAvailability");
 
 // Frontend can send stray "null"/"" entries when nothing is selected —
 // keep only real ObjectIds so Mongoose casting doesn't blow up.
@@ -11,6 +12,36 @@ const cleanIds = (arr) =>
   (Array.isArray(arr) ? arr : [])
     .filter((id) => mongoose.Types.ObjectId.isValid(id))
     .map(String);
+
+// Rental pricing is per day, ceiling-rounded — any part of a day (a 1-hour
+// or 6-hour quick-pick duration included) bills as a full day. No return
+// date at all means we can't know the duration yet, so it's billed as 1 day.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const daysBetween = (start, end) => {
+  if (!end) return 1;
+  return Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / DAY_MS));
+};
+
+// Collapses the same product listed as two separate line items (e.g. a
+// customer picks a product on two separate rows) into one — otherwise each
+// row would independently read/reserve availableQty off the same starting
+// snapshot and the second save would clobber the first's decrement instead
+// of the two combining.
+const mergeItemsByProduct = (items) => {
+  const merged = [];
+  const indexByProduct = new Map();
+  for (const item of items) {
+    const key = String(item.productId);
+    const quantity = Number(item.quantity) || 1;
+    if (indexByProduct.has(key)) {
+      merged[indexByProduct.get(key)].quantity += quantity;
+    } else {
+      indexByProduct.set(key, merged.length);
+      merged.push({ productId: item.productId, quantity });
+    }
+  }
+  return merged;
+};
 
 // Shared by createRental (bundled at creation) and addRentalDeposit (added
 // later) — CASH deposits also record a Payment, GUARANTOR/DOCUMENT don't.
@@ -55,22 +86,32 @@ const createRental = async (req, res, next) => {
     const customer = await Customer.findOne({ _id: customerId, storeId: req.storeId });
     if (!customer) return res.status(404).json({ message: "Customer not found" });
 
-    const resolvedItems = [];
-    let totalRentFee = 0;
+    const dateOut = new Date();
+    const rentalDays = daysBetween(dateOut, expectedReturnDate);
 
-    for (const item of items) {
+    const resolvedItems = [];
+    const touchedProducts = [];
+    let rentSubtotal = 0;
+
+    for (const item of mergeItemsByProduct(items)) {
       const product = await Product.findOne({ _id: item.productId, storeId: req.storeId });
       if (!product) {
         return res.status(404).json({ message: `Product ${item.productId} not found` });
       }
-      if (product.status !== "available") {
-        return res.status(409).json({ message: `Product ${product.name} is not available` });
+      if (product.listingType !== "RENT") {
+        return res.status(400).json({ message: `${product.name} is a sale item and can't be rented` });
       }
-      const quantity = item.quantity || 1;
+      const quantity = item.quantity;
+      if (product.availableQty < quantity) {
+        return res.status(409).json({ message: `Product ${product.name} only has ${product.availableQty} unit(s) available` });
+      }
       const unitRent = product.rentPrice;
       resolvedItems.push({ productId: product._id, quantity, unitRent });
-      totalRentFee += unitRent * quantity;
+      rentSubtotal += unitRent * quantity;
+      touchedProducts.push({ product, quantity });
     }
+
+    const totalRentFee = rentSubtotal * rentalDays;
 
     const transaction = await RentalTransaction.create({
       storeId: req.storeId,
@@ -78,14 +119,16 @@ const createRental = async (req, res, next) => {
       staffUserId: req.user.id,
       items: resolvedItems,
       totalRentFee,
+      rentalDays,
+      dateOut,
       expectedReturnDate,
       status: "active"
     });
 
-    await Product.updateMany(
-      { _id: { $in: resolvedItems.map((i) => i.productId) } },
-      { $set: { status: "rented" } }
-    );
+    for (const { product, quantity } of touchedProducts) {
+      reserveUnits(product, quantity);
+      await product.save();
+    }
 
     const createdDeposits = [];
     for (const deposit of deposits || []) {
@@ -146,6 +189,9 @@ const updateRental = async (req, res, next) => {
     if (rental.status === "returned") {
       return res.status(409).json({ message: "Rental already returned — items can no longer be edited" });
     }
+    if (rental.status === "cancelled") {
+      return res.status(409).json({ message: "Rental is cancelled — it can no longer be edited" });
+    }
 
     const { customerId, items, expectedReturnDate } = req.body;
 
@@ -156,41 +202,56 @@ const updateRental = async (req, res, next) => {
     const customer = await Customer.findOne({ _id: customerId, storeId: req.storeId });
     if (!customer) return res.status(404).json({ message: "Customer not found" });
 
-    const oldProductIds = new Set(rental.items.map((it) => it.productId.toString()));
+    const oldQuantities = new Map(rental.items.map((it) => [it.productId.toString(), it.quantity]));
+    const newQuantities = new Map();
 
     const resolvedItems = [];
-    const newProductIds = new Set();
-    let totalRentFee = 0;
+    const touchedProducts = new Map(); // productId -> { product, delta }
+    let rentSubtotal = 0;
 
-    for (const item of items) {
+    for (const item of mergeItemsByProduct(items)) {
       const product = await Product.findOne({ _id: item.productId, storeId: req.storeId });
       if (!product) {
         return res.status(404).json({ message: `Product ${item.productId} not found` });
       }
-      const alreadyOnThisRental = oldProductIds.has(product._id.toString());
-      if (!alreadyOnThisRental && product.status !== "available") {
-        return res.status(409).json({ message: `Product ${product.name} is not available` });
+      if (product.listingType !== "RENT") {
+        return res.status(400).json({ message: `${product.name} is a sale item and can't be rented` });
       }
-      const quantity = item.quantity || 1;
-      const unitRent = product.rentPrice;
-      resolvedItems.push({ productId: product._id, quantity, unitRent });
-      newProductIds.add(product._id.toString());
-      totalRentFee += unitRent * quantity;
+      const quantity = item.quantity;
+      const productKey = product._id.toString();
+      const oldQuantity = oldQuantities.get(productKey) || 0;
+      const delta = quantity - oldQuantity;
+      if (delta > 0 && product.availableQty < delta) {
+        return res.status(409).json({ message: `Product ${product.name} only has ${product.availableQty} unit(s) available` });
+      }
+      resolvedItems.push({ productId: product._id, quantity, unitRent: product.rentPrice });
+      newQuantities.set(productKey, quantity);
+      rentSubtotal += product.rentPrice * quantity;
+      touchedProducts.set(productKey, { product, delta });
     }
 
-    const removedProductIds = [...oldProductIds].filter((id) => !newProductIds.has(id));
-    const addedProductIds = [...newProductIds].filter((id) => !oldProductIds.has(id));
-
-    if (removedProductIds.length) {
-      await Product.updateMany({ _id: { $in: removedProductIds } }, { $set: { status: "available" } });
+    // Items removed entirely from the rental — release their reserved units.
+    for (const [productKey, oldQuantity] of oldQuantities) {
+      if (newQuantities.has(productKey)) continue;
+      const product = await Product.findById(productKey);
+      if (!product) continue;
+      touchedProducts.set(productKey, { product, delta: -oldQuantity });
     }
-    if (addedProductIds.length) {
-      await Product.updateMany({ _id: { $in: addedProductIds } }, { $set: { status: "rented" } });
+
+    const rentalDays = daysBetween(rental.dateOut, expectedReturnDate);
+    const totalRentFee = rentSubtotal * rentalDays;
+
+    for (const { product, delta } of touchedProducts.values()) {
+      if (!delta) continue;
+      if (delta > 0) reserveUnits(product, delta);
+      else releaseUnits(product, -delta);
+      await product.save();
     }
 
     rental.customerId = customerId;
     rental.items = resolvedItems;
     rental.totalRentFee = totalRentFee;
+    rental.rentalDays = rentalDays;
     rental.expectedReturnDate = expectedReturnDate;
     await rental.save();
 
@@ -211,6 +272,9 @@ const addRentalDeposit = async (req, res, next) => {
     if (!transaction) return res.status(404).json({ message: "Rental not found" });
     if (transaction.status === "returned") {
       return res.status(409).json({ message: "Rental already returned — deposits can no longer be added" });
+    }
+    if (transaction.status === "cancelled") {
+      return res.status(409).json({ message: "Rental is cancelled — deposits can no longer be added" });
     }
 
     const { depositType, cashAmount, paymentMethodId, documentImageUrl, guarantorName, guarantorPhone } = req.body;
@@ -254,6 +318,9 @@ const returnRental = async (req, res, next) => {
     if (transaction.status === "returned") {
       return res.status(409).json({ message: "Rental already returned" });
     }
+    if (transaction.status === "cancelled") {
+      return res.status(409).json({ message: "Rental is cancelled" });
+    }
 
     const deposits = await RentalDeposit.find({ transactionId: transaction._id, depositType: "CASH" });
     const cashDepositAlreadyPaid = deposits.reduce((sum, d) => sum + (d.cashAmount || 0), 0);
@@ -287,14 +354,34 @@ const returnRental = async (req, res, next) => {
     };
     await transaction.save();
 
-    if (okIds.length) {
-      await Product.updateMany({ _id: { $in: okIds } }, { $set: { status: "available" } });
+    const quantityByProduct = new Map(transaction.items.map((it) => [it.productId.toString(), it.quantity]));
+
+    // OK items free up their reserved units. Damaged/missing units leave the
+    // fleet for good — they're removed from the total quantity rather than
+    // returned to the available pool.
+    for (const id of okIds) {
+      const qty = quantityByProduct.get(id) || 0;
+      if (!qty) continue;
+      const product = await Product.findById(id);
+      if (!product) continue;
+      releaseUnits(product, qty);
+      await product.save();
     }
-    if (damagedIds.length) {
-      await Product.updateMany({ _id: { $in: damagedIds } }, { $set: { status: "damaged" } });
+    for (const id of damagedIds) {
+      const qty = quantityByProduct.get(id) || 0;
+      if (!qty) continue;
+      const product = await Product.findById(id);
+      if (!product) continue;
+      removeFromFleet(product, qty, "damaged");
+      await product.save();
     }
-    if (missingIds.length) {
-      await Product.updateMany({ _id: { $in: missingIds } }, { $set: { status: "lost" } });
+    for (const id of missingIds) {
+      const qty = quantityByProduct.get(id) || 0;
+      if (!qty) continue;
+      const product = await Product.findById(id);
+      if (!product) continue;
+      removeFromFleet(product, qty, "lost");
+      await product.save();
     }
 
     let refundPayment = null;
@@ -324,4 +411,33 @@ const returnRental = async (req, res, next) => {
   }
 };
 
-module.exports = { createRental, getRentals, getRentalById, updateRental, addRentalDeposit, returnRental };
+const cancelRental = async (req, res, next) => {
+  try {
+    const rental = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId });
+    if (!rental) return res.status(404).json({ message: "Rental not found" });
+    if (rental.status === "returned" || rental.status === "cancelled") {
+      return res.status(409).json({ message: "Only active rentals can be cancelled" });
+    }
+
+    rental.status = "cancelled";
+    rental.cancelledAt = new Date();
+    rental.cancelledBy = req.user.id;
+    await rental.save();
+
+    // Release each item's reserved units. If the product was since deleted
+    // (the bug this feature exists to fix), findById just returns null and
+    // we move on — nothing left to release.
+    for (const item of rental.items) {
+      const product = await Product.findById(item.productId);
+      if (!product) continue;
+      releaseUnits(product, item.quantity);
+      await product.save();
+    }
+
+    res.json({ message: "Rental cancelled" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createRental, getRentals, getRentalById, updateRental, addRentalDeposit, returnRental, cancelRental };

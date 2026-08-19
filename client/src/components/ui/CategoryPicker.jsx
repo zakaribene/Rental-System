@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, ChevronDown, Tag, TagsIcon } from 'lucide-react'
+import { Search, ChevronDown, Tag, TagsIcon, Plus } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 // Searchable category dropdown for the product form — categories are
 // store-defined (via the Categories modal) rather than a hardcoded list, so
 // this needs to filter instead of a plain <select> once a store has many.
-export default function CategoryPicker({ categories, value, onChange, placeholder = 'Search category...', className }) {
+// If `onCreate` is passed, a query with no exact match offers a "+ Create"
+// row so a brand-new category can be added without leaving the product form.
+export default function CategoryPicker({ categories, value, onChange, onCreate, placeholder = 'Search category...', className }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -18,11 +21,28 @@ export default function CategoryPicker({ categories, value, onChange, placeholde
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const trimmedQuery = query.trim()
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = trimmedQuery.toLowerCase()
     if (!q) return categories
     return categories.filter((c) => c.name.toLowerCase().includes(q))
-  }, [categories, query])
+  }, [categories, trimmedQuery])
+
+  const hasExactMatch = categories.some((c) => c.name.toLowerCase() === trimmedQuery.toLowerCase())
+  const canCreate = !!onCreate && !!trimmedQuery && !hasExactMatch
+
+  const handleCreate = async () => {
+    if (!canCreate) return
+    setCreating(true)
+    try {
+      await onCreate(trimmedQuery)
+      setQuery('')
+      setOpen(false)
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
@@ -46,12 +66,14 @@ export default function CategoryPicker({ categories, value, onChange, placeholde
 
       {open && (
         <div className="absolute z-20 mt-1.5 max-h-64 w-full min-w-[14rem] overflow-y-auto rounded-lg border border-ink-200 bg-white shadow-lg dark:border-ink-700 dark:bg-ink-800">
-          {categories.length === 0 ? (
+          {categories.length === 0 && !trimmedQuery ? (
             <div className="flex flex-col items-center gap-1.5 px-4 py-6 text-center">
               <TagsIcon size={18} className="text-ink-300" />
-              <p className="text-sm text-ink-400">No categories yet — add one from "Categories" above.</p>
+              <p className="text-sm text-ink-400">
+                {onCreate ? 'No categories yet — type a name below to create one.' : 'No categories yet — add one from "Categories" above.'}
+              </p>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && !canCreate ? (
             <p className="px-4 py-3 text-sm text-ink-400">No categories match "{query}"</p>
           ) : (
             filtered.map((c) => (
@@ -72,6 +94,17 @@ export default function CategoryPicker({ categories, value, onChange, placeholde
                 <span className="truncate font-medium text-ink-800 dark:text-ink-100">{c.name}</span>
               </button>
             ))
+          )}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={creating}
+              className="flex w-full items-center gap-2.5 border-t border-ink-100 px-3.5 py-2.5 text-left text-sm font-medium text-primary-700 transition-colors hover:bg-primary-50 disabled:opacity-60 dark:border-ink-700 dark:text-primary-300 dark:hover:bg-primary-500/10"
+            >
+              <Plus size={14} className="shrink-0" />
+              {creating ? 'Creating…' : `Create "${trimmedQuery}"`}
+            </button>
           )}
         </div>
       )}

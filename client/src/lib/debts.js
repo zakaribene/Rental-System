@@ -4,7 +4,7 @@
 // with debt card).
 export function combineDebts(rentals = [], sales = []) {
   const rentalDebts = rentals
-    .filter((r) => (r.remainingDebt || 0) > 0)
+    .filter((r) => r.status !== 'cancelled' && (r.remainingDebt || 0) > 0)
     .map((r) => ({
       kind: 'RENTAL',
       id: r._id,

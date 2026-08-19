@@ -36,7 +36,7 @@ router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScope
  *               category: { type: string, description: "Free-text; store-defined via /categories" }
  *               listingType: { type: string, enum: [RENT, SALE], description: "Defaults to RENT. SALE requires the store to have Sales enabled." }
  *               rentPrice: { type: number, description: "Required when listingType is RENT" }
- *               depositPrice: { type: number }
+ *               quantity: { type: number, description: "Total rentable units (RENT only). Defaults to 1." }
  *               salePrice: { type: number, description: "Required when listingType is SALE" }
  *               stockQty: { type: number, description: "Required when listingType is SALE" }
  *               imageUrl: { type: string }
@@ -109,7 +109,7 @@ router.post("/upload-image", uploadProduct.single("image"), uploadProductImage);
  *               category: { type: string, description: "Free-text; store-defined via /categories" }
  *               listingType: { type: string, enum: [RENT, SALE] }
  *               rentPrice: { type: number }
- *               depositPrice: { type: number }
+ *               quantity: { type: number, description: "Total rentable units (RENT only)" }
  *               salePrice: { type: number }
  *               stockQty: { type: number }
  *               imageUrl: { type: string }
@@ -129,6 +129,7 @@ router.post("/upload-image", uploadProduct.single("image"), uploadProductImage);
  *     responses:
  *       200: { description: Deleted }
  *       404: { description: Not found }
+ *       409: { description: Product is part of an active rental }
  */
 router.get("/:id", getProductById);
 router.patch(

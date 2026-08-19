@@ -16,7 +16,7 @@ import {
   Eye,
   Pencil,
 } from 'lucide-react'
-import { listRentals, createRental, updateRental, getRental, addRentalDeposit, returnRental, uploadDepositDocument } from '../../api/rentals'
+import { listRentals, createRental, updateRental, getRental, addRentalDeposit, returnRental, cancelRental, uploadDepositDocument } from '../../api/rentals'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
 import { listPaymentMethods } from '../../api/payments'
@@ -32,6 +32,7 @@ import Input, { Field, Select } from '../../components/ui/Input'
 import ProductPicker from '../../components/ui/ProductPicker'
 import CustomerPicker from '../../components/ui/CustomerPicker'
 import RowActionsMenu from '../../components/ui/RowActionsMenu'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
 import { formatMoney, formatDateTime } from '../../lib/utils'
@@ -52,6 +53,14 @@ function toDatetimeLocalValue(date) {
 
 function computeDurationValue(hours) {
   return toDatetimeLocalValue(new Date(Date.now() + hours * 60 * 60 * 1000))
+}
+
+// Mirrors the backend's ceiling-rounded day count (server/controllers/rentalController.js)
+// so the "Estimated total" shown here matches what actually gets charged.
+const DAY_MS = 24 * 60 * 60 * 1000
+function daysBetween(start, end) {
+  if (!end) return 1
+  return Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / DAY_MS))
 }
 
 export default function Rentals() {
@@ -101,17 +110,37 @@ export default function Rentals() {
     loadProducts()
   }
 
+  const rentableProducts = allProducts.filter((p) => p.listingType !== 'SALE')
+
   const openCreate = () => {
-    setFormTarget({ mode: 'create', rental: null, products: allProducts.filter((p) => p.status === 'available') })
+    setFormTarget({ mode: 'create', rental: null, products: rentableProducts.filter((p) => p.availableQty > 0) })
   }
 
   const openEdit = (row) => {
-    // A product currently held by this rental is already "rented", so the
+    // A product currently held by this rental has 0 units left free, so the
     // edit form's product list needs it too, not just the normally-available
     // ones — otherwise you couldn't even keep the same item.
     const rentedProductIds = new Set((row.items || []).map((it) => (it.productId?._id || it.productId)))
-    const effectiveProducts = allProducts.filter((p) => p.status === 'available' || rentedProductIds.has(p._id))
+    const effectiveProducts = rentableProducts.filter((p) => p.availableQty > 0 || rentedProductIds.has(p._id))
     setFormTarget({ mode: 'edit', rental: row, products: effectiveProducts })
+  }
+
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState('')
+
+  const confirmCancel = async () => {
+    setCancelling(true)
+    setCancelError('')
+    try {
+      await cancelRental(cancelTarget._id)
+      setCancelTarget(null)
+      afterMutate()
+    } catch (err) {
+      setCancelError(apiErrorMessage(err, 'Failed to cancel rental'))
+    } finally {
+      setCancelling(false)
+    }
   }
 
   const query = search.trim().toLowerCase()
@@ -142,6 +171,7 @@ export default function Rentals() {
           <option value="active">Active</option>
           <option value="returned">Returned</option>
           <option value="overdue">Overdue</option>
+          <option value="cancelled">Cancelled</option>
         </Select>
         <Input
           icon={Search}
@@ -194,10 +224,13 @@ export default function Rentals() {
                       <RowActionsMenu
                         items={[
                           { key: 'view', label: 'View', icon: Eye, onClick: () => openDetail(row) },
-                          ...(can('rentals', 'edit')
+                          ...(can('rentals', 'edit') && row.status !== 'cancelled'
                             ? [{ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => openEdit(row) }]
                             : []),
                           { key: 'print', label: 'Print', icon: Printer, onClick: () => openDetail(row, { autoPrint: true }) },
+                          ...(can('rentals', 'delete') && (row.status === 'active' || row.status === 'overdue')
+                            ? [{ key: 'cancel', label: 'Cancel', icon: Trash2, tone: 'danger', onClick: () => { setCancelError(''); setCancelTarget(row) } }]
+                            : []),
                         ]}
                       />
                     </div>
@@ -236,6 +269,25 @@ export default function Rentals() {
           setDetailOpen(false)
           afterMutate()
         }}
+      />
+
+      <ConfirmDialog
+        open={!!cancelTarget}
+        onClose={() => (cancelling ? null : setCancelTarget(null))}
+        onConfirm={confirmCancel}
+        loading={cancelling}
+        error={cancelError}
+        title="Cancel rental?"
+        message={
+          cancelTarget && (
+            <>
+              Cancel rental <span className="font-mono font-semibold text-ink-800 dark:text-ink-100">#{cancelTarget._id.slice(-6)}</span>{' '}
+              for {cancelTarget.customerId?.fullName || 'this customer'}? This releases its items back to available stock.
+            </>
+          )
+        }
+        confirmLabel="Cancel rental"
+        cancelLabel="Keep it"
       />
     </div>
   )
@@ -353,7 +405,9 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
   const selectedProducts = items
     .map((it) => products.find((p) => p._id === it.productId))
     .filter(Boolean)
-  const estimatedTotal = selectedProducts.reduce((sum, p, i) => sum + p.rentPrice * (Number(items[i]?.quantity) || 1), 0)
+  const rentalDays = daysBetween(mode === 'edit' && rental ? rental.dateOut : new Date(), expectedReturnDate)
+  const estimatedSubtotal = selectedProducts.reduce((sum, p, i) => sum + p.rentPrice * (Number(items[i]?.quantity) || 1), 0)
+  const estimatedTotal = estimatedSubtotal * rentalDays
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -467,7 +521,8 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           </div>
           {estimatedTotal > 0 && (
             <p className="mt-2 text-sm font-medium text-ink-600">
-              Estimated total: <span className="font-bold text-primary-700">{formatMoney(estimatedTotal)}</span>
+              Estimated total ({rentalDays} day{rentalDays === 1 ? '' : 's'}):{' '}
+              <span className="font-bold text-primary-700">{formatMoney(estimatedTotal)}</span>
             </p>
           )}
         </div>
@@ -791,7 +846,12 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
             </div>
             <div>
               <p className="text-ink-400">Total rent fee</p>
-              <p className="font-semibold text-ink-800">{formatMoney(transaction.totalRentFee)}</p>
+              <p className="font-semibold text-ink-800">
+                {formatMoney(transaction.totalRentFee)}
+                <span className="ml-1 text-xs font-normal text-ink-400">
+                  ({transaction.rentalDays || 1} day{(transaction.rentalDays || 1) === 1 ? '' : 's'})
+                </span>
+              </p>
             </div>
             <div>
               <p className="text-ink-400">Status</p>
@@ -937,12 +997,13 @@ function RentedItems({ transaction }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink-800">{product?.name || 'Item'}</p>
                 <p className="text-xs text-ink-400">
-                  Qty {it.quantity} · {formatMoney(it.unitRent)} each
+                  Qty {it.quantity} · {formatMoney(it.unitRent)}/day · {transaction.rentalDays || 1} day
+                  {(transaction.rentalDays || 1) === 1 ? '' : 's'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 {condition && <Badge tone={itemConditionMeta[condition].tone}>{itemConditionMeta[condition].label}</Badge>}
-                <p className="font-semibold text-ink-800">{formatMoney(it.unitRent * it.quantity)}</p>
+                <p className="font-semibold text-ink-800">{formatMoney(it.unitRent * it.quantity * (transaction.rentalDays || 1))}</p>
               </div>
             </div>
           )

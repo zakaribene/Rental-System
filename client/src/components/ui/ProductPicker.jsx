@@ -88,6 +88,7 @@ export default function ProductPicker({
                   <p className="truncate text-xs text-ink-400">
                     {formatMoney(p[priceKey])}
                     {showStock && <> · {p.stockQty} in stock</>}
+                    {priceKey === 'rentPrice' && p.availableQty !== undefined && <> · {p.availableQty} available</>}
                     {p.category && <> · <span className="capitalize">{p.category}</span></>}
                   </p>
                 </div>

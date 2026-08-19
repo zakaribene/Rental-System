@@ -13,6 +13,7 @@ import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
 import CategoryPicker from '../../components/ui/CategoryPicker'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import SectionLabel from '../../components/ui/SectionLabel'
 import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
@@ -24,7 +25,7 @@ const emptyForm = {
   category: '',
   listingType: 'RENT',
   rentPrice: '',
-  depositPrice: '',
+  quantity: '1',
   salePrice: '',
   stockQty: '',
   imageUrl: '',
@@ -59,6 +60,17 @@ export default function Products() {
 
   const loadCategories = () => listCategories().then(setCategories)
 
+  const handleCreateCategoryInline = async (name) => {
+    try {
+      const created = await createCategory({ name })
+      await loadCategories()
+      setForm((f) => ({ ...f, category: created.name }))
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to create category'))
+      throw err
+    }
+  }
+
   useEffect(load, [statusFilter])
   useEffect(() => {
     getMyStore().then(setStore).catch(() => setStore(null))
@@ -85,7 +97,7 @@ export default function Products() {
       category: product.category || '',
       listingType: product.listingType || 'RENT',
       rentPrice: product.rentPrice || '',
-      depositPrice: product.depositPrice || '',
+      quantity: product.quantity ?? '1',
       salePrice: product.salePrice || '',
       stockQty: product.stockQty ?? '',
       imageUrl: product.imageUrl || '',
@@ -108,7 +120,7 @@ export default function Products() {
       plateNumber: form.plateNumber || undefined,
       ...(form.listingType === 'SALE'
         ? { salePrice: Number(form.salePrice), stockQty: Number(form.stockQty) }
-        : { rentPrice: Number(form.rentPrice), depositPrice: form.depositPrice === '' ? undefined : Number(form.depositPrice) }),
+        : { rentPrice: Number(form.rentPrice), quantity: Number(form.quantity) || 1 }),
     }
     try {
       if (editing) {
@@ -141,10 +153,22 @@ export default function Products() {
     }
   }
 
-  const handleDelete = async (product) => {
-    if (!confirm(`Delete "${product.name}"? This cannot be undone.`)) return
-    await deleteProduct(product._id)
-    load()
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const confirmDelete = async () => {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteProduct(deleteTarget._id)
+      setDeleteTarget(null)
+      load()
+    } catch (err) {
+      setDeleteError(apiErrorMessage(err, 'Failed to delete product'))
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (loaded && !can('products')) return <Navigate to="/store" replace />
@@ -235,7 +259,11 @@ export default function Products() {
                   header: 'Price',
                   render: (row) => (row.listingType === 'SALE' ? formatMoney(row.salePrice) : formatMoney(row.rentPrice)),
                 },
-                { key: 'depositPrice', header: 'Deposit', render: (row) => (row.depositPrice ? formatMoney(row.depositPrice) : '—') },
+                {
+                  key: 'availableQty',
+                  header: 'Available',
+                  render: (row) => (row.listingType === 'SALE' ? '—' : `${row.availableQty ?? 0} / ${row.quantity ?? 1}`),
+                },
                 ...(store?.salesEnabled
                   ? [{ key: 'stockQty', header: 'Stock', render: (row) => (row.listingType === 'SALE' ? row.stockQty : '—') }]
                   : []),
@@ -252,7 +280,7 @@ export default function Products() {
                         <Button size="sm" variant="secondary" icon={Pencil} onClick={() => openEdit(row)} />
                       )}
                       {can('products', 'delete') && (
-                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => handleDelete(row)} />
+                        <Button size="sm" variant="ghost" icon={Trash2} onClick={() => { setDeleteError(''); setDeleteTarget(row) }} />
                       )}
                     </div>
                   ),
@@ -297,11 +325,12 @@ export default function Products() {
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Category" hint={categories.length === 0 ? 'Add one via "Categories" above' : undefined}>
+            <Field label="Category" hint="Type to search, or create a new one on the fly">
               <CategoryPicker
                 categories={categories}
                 value={form.category}
                 onChange={(name) => setForm((f) => ({ ...f, category: name }))}
+                onCreate={handleCreateCategoryInline}
               />
             </Field>
             {editing && (
@@ -367,15 +396,19 @@ export default function Products() {
                   required
                 />
               </Field>
-              <Field label="Deposit price" hint="Optional">
+              <Field
+                label="Quantity"
+                required
+                hint={editing ? `${editing.availableQty ?? 0} currently available` : 'How many units you own'}
+              >
                 <Input
-                  icon={DollarSign}
                   type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.depositPrice}
-                  onChange={(e) => setForm((f) => ({ ...f, depositPrice: e.target.value }))}
-                  placeholder="0.00"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                  placeholder="1"
+                  required
                 />
               </Field>
             </div>
@@ -490,8 +523,10 @@ export default function Products() {
                     <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(viewProduct.rentPrice)}</p>
                   </div>
                   <div>
-                    <p className="text-ink-400">Deposit price</p>
-                    <p className="font-semibold text-ink-800 dark:text-ink-100">{viewProduct.depositPrice ? formatMoney(viewProduct.depositPrice) : '—'}</p>
+                    <p className="text-ink-400">Available</p>
+                    <p className="font-semibold text-ink-800 dark:text-ink-100">
+                      {viewProduct.availableQty ?? 0} / {viewProduct.quantity ?? 1}
+                    </p>
                   </div>
                 </>
               )}
@@ -511,6 +546,24 @@ export default function Products() {
         onClose={() => setCategoriesModalOpen(false)}
         categories={categories}
         reload={loadCategories}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => (deleting ? null : setDeleteTarget(null))}
+        onConfirm={confirmDelete}
+        loading={deleting}
+        error={deleteError}
+        title="Delete product?"
+        message={
+          deleteTarget && (
+            <>
+              Delete <span className="font-semibold text-ink-800 dark:text-ink-100">"{deleteTarget.name}"</span>? This cannot be undone.
+            </>
+          )
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
       />
     </div>
   )

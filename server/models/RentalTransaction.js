@@ -12,10 +12,13 @@ const rentalTransactionSchema = new mongoose.Schema({
     }
   ],
   totalRentFee: { type: Number, required: true },
+  rentalDays: { type: Number, default: 1 },
   rentPaid: { type: Number, default: 0 },
   dateOut: { type: Date, default: Date.now },
   expectedReturnDate: { type: Date },
-  status: { type: String, enum: ["active", "returned", "overdue"], default: "active" },
+  status: { type: String, enum: ["active", "returned", "overdue", "cancelled"], default: "active" },
+  cancelledAt: Date,
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   returnDetails: {
     returnDate: Date,
     itemsReturnedOk: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],

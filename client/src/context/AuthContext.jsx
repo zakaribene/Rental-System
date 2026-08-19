@@ -4,6 +4,8 @@ import { setAccessToken, setUnauthorizedHandler } from '../api/client'
 
 const AuthContext = createContext(null)
 const STORAGE_KEY = 'rental_system_user'
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000
+const IDLE_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll']
 
 function readStoredUser() {
   try {
@@ -82,6 +84,34 @@ export function AuthProvider({ children }) {
     setAccessToken(accessToken)
     setUser(impersonatedUser)
   }
+
+  // Auto-logout after 15 minutes of inactivity, for every signed-in role
+  // (store owner/staff and super admin alike). `logout` is recreated every
+  // render, so it's stashed in a ref that the listener effect reads from —
+  // that keeps the effect from tearing down and re-attaching its listeners
+  // on every render.
+  const logoutRef = useRef(logout)
+  useEffect(() => {
+    logoutRef.current = logout
+  })
+
+  useEffect(() => {
+    if (!user) return undefined
+
+    let timer
+    const resetTimer = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => logoutRef.current(), IDLE_TIMEOUT_MS)
+    }
+
+    IDLE_EVENTS.forEach((event) => window.addEventListener(event, resetTimer))
+    resetTimer()
+
+    return () => {
+      clearTimeout(timer)
+      IDLE_EVENTS.forEach((event) => window.removeEventListener(event, resetTimer))
+    }
+  }, [user])
 
   return (
     <AuthContext.Provider value={{ user, login, logout, impersonate, initializing }}>{children}</AuthContext.Provider>

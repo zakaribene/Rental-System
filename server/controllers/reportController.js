@@ -74,13 +74,13 @@ const analytics = async (req, res, next) => {
     const period = req.query.period === "week" ? "week" : "month";
 
     const topProducts = await RentalTransaction.aggregate([
-      { $match: { storeId } },
+      { $match: { storeId, status: { $ne: "cancelled" } } },
       { $unwind: "$items" },
       {
         $group: {
           _id: "$items.productId",
           rentals: { $sum: "$items.quantity" },
-          revenue: { $sum: { $multiply: ["$items.unitRent", "$items.quantity"] } }
+          revenue: { $sum: { $multiply: ["$items.unitRent", "$items.quantity", { $ifNull: ["$rentalDays", 1] }] } }
         }
       },
       { $sort: { rentals: -1 } },
@@ -91,7 +91,7 @@ const analytics = async (req, res, next) => {
     ]);
 
     const topCustomers = await RentalTransaction.aggregate([
-      { $match: { storeId } },
+      { $match: { storeId, status: { $ne: "cancelled" } } },
       { $group: { _id: "$customerId", revenue: { $sum: "$totalRentFee" }, rentals: { $sum: 1 } } },
       { $sort: { revenue: -1 } },
       { $limit: 3 },
