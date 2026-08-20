@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Headphones, Send, ShieldCheck, Clock3 } from 'lucide-react'
+import { Headphones, Send, ShieldCheck, Clock3, Paperclip, X } from 'lucide-react'
 import { getStoreMessages, sendStoreMessage, markStoreRead } from '../../api/support'
+import { API_ORIGIN } from '../../api/client'
 import { cn, formatRelativeTime, playChime } from '../../lib/utils'
 
 const POLL_INTERVAL = 5000
@@ -9,11 +10,14 @@ export default function Help() {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [text, setText] = useState('')
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const [sending, setSending] = useState(false)
   const prevCount = useRef(0)
   const firstLoad = useRef(true)
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     const load = () => {
@@ -42,17 +46,33 @@ export default function Help() {
   const handleSend = async (e) => {
     e.preventDefault()
     const value = text.trim()
-    if (!value || sending) return
+    if ((!value && !imageFile) || sending) return
     setSending(true)
     setText('')
+    const file = imageFile
+    clearImage()
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     try {
-      const msg = await sendStoreMessage(value)
+      const msg = await sendStoreMessage(value, file)
       setMessages((m) => [...m, msg])
       prevCount.current += 1
     } finally {
       setSending(false)
     }
+  }
+
+  const handlePickImage = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  const clearImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setImagePreview(null)
   }
 
   const handleKeyDown = (e) => {
@@ -120,7 +140,16 @@ export default function Help() {
                     {m.senderRole !== 'STORE' && (
                       <p className="mb-0.5 text-[11px] font-semibold text-primary-600 dark:text-primary-400">Support Team</p>
                     )}
-                    <p className="whitespace-pre-wrap leading-relaxed">{m.message}</p>
+                    {m.attachmentUrl && (
+                      <a href={`${API_ORIGIN}${m.attachmentUrl}`} target="_blank" rel="noreferrer">
+                        <img
+                          src={`${API_ORIGIN}${m.attachmentUrl}`}
+                          alt="Attachment"
+                          className={cn('max-h-56 rounded-xl object-cover', m.message && 'mb-2')}
+                        />
+                      </a>
+                    )}
+                    {m.message && <p className="whitespace-pre-wrap leading-relaxed">{m.message}</p>}
                     <p
                       className={cn(
                         'mt-1 flex items-center gap-1 text-[10px]',
@@ -137,27 +166,49 @@ export default function Help() {
           )}
         </div>
 
-        <form
-          className="flex items-end gap-2 border-t border-ink-100 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-black/10"
-          onSubmit={handleSend}
-        >
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message... (Shift+Enter for a new line)"
-            rows={1}
-            className="max-h-[120px] min-h-[44px] w-full resize-none rounded-3xl border border-ink-200 bg-white px-4 py-2.5 text-sm leading-relaxed text-ink-900 placeholder:text-ink-400 transition-colors focus:border-primary-400 focus:outline-none focus:ring-4 focus:ring-primary-100 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-ink-500 dark:focus:border-primary-400 dark:focus:ring-primary-500/20"
-          />
-          <button
-            type="submit"
-            disabled={!text.trim() || sending}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white shadow-pop transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Send size={17} />
-          </button>
-        </form>
+        <div className="border-t border-ink-100 bg-ink-50/50 dark:border-white/10 dark:bg-black/10">
+          {imagePreview && (
+            <div className="flex items-center gap-2 px-3 pt-3">
+              <div className="relative">
+                <img src={imagePreview} alt="Selected" className="h-16 w-16 rounded-lg object-cover" />
+                <button
+                  type="button"
+                  onClick={clearImage}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink-900 text-white shadow-soft hover:bg-ink-800"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          )}
+          <form className="flex items-end gap-2 p-3" onSubmit={handleSend}>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePickImage} className="hidden" />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-500 transition-colors hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-white/10"
+              title="Attach an image"
+            >
+              <Paperclip size={18} />
+            </button>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message... (Shift+Enter for a new line)"
+              rows={1}
+              className="max-h-[120px] min-h-[44px] w-full resize-none rounded-3xl border border-ink-200 bg-white px-4 py-2.5 text-sm leading-relaxed text-ink-900 placeholder:text-ink-400 transition-colors focus:border-primary-400 focus:outline-none focus:ring-4 focus:ring-primary-100 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-ink-500 dark:focus:border-primary-400 dark:focus:ring-primary-500/20"
+            />
+            <button
+              type="submit"
+              disabled={(!text.trim() && !imageFile) || sending}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white shadow-pop transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send size={17} />
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

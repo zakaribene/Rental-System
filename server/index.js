@@ -25,11 +25,13 @@ const adminActivityLogRoutes = require("./routes/adminActivityLogRoutes");
 const { startOverdueJob } = require("./jobs/overdueJob");
 const { startSubscriptionJob } = require("./jobs/subscriptionJob");
 const { startActivityLogCleanupJob } = require("./jobs/activityLogCleanupJob");
+const { startSupportCleanupJob } = require("./jobs/supportCleanupJob");
 
 connectDB();
 startOverdueJob();
 startSubscriptionJob();
 startActivityLogCleanupJob();
+startSupportCleanupJob();
 
 const app = express();
 

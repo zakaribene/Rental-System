@@ -57,5 +57,13 @@ const uploadDocument = makeUploader("documents");
 const uploadLogo = makeUploader("logos");
 const uploadCustomerPhoto = makeUploader("customers");
 const uploadCustomerIdDocument = makeUploader("customer-ids", imageOrPdfTypes);
+const uploadSupportAttachment = makeUploader("support");
 
-module.exports = { uploadProduct, uploadDocument, uploadLogo, uploadCustomerPhoto, uploadCustomerIdDocument };
+module.exports = {
+  uploadProduct,
+  uploadDocument,
+  uploadLogo,
+  uploadCustomerPhoto,
+  uploadCustomerIdDocument,
+  uploadSupportAttachment
+};

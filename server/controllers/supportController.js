@@ -1,5 +1,6 @@
 const Store = require("../models/Store");
 const SupportMessage = require("../models/SupportMessage");
+const SupportSettings = require("../models/SupportSettings");
 
 // --- Store side ---
 
@@ -14,15 +15,17 @@ const getStoreMessages = async (req, res, next) => {
 
 const sendStoreMessage = async (req, res, next) => {
   try {
-    const { message } = req.body;
-    if (!message || !message.trim()) {
-      return res.status(400).json({ message: "message is required" });
+    const message = (req.body.message || "").trim();
+    const attachmentUrl = req.file?.path || null;
+    if (!message && !attachmentUrl) {
+      return res.status(400).json({ message: "message or image is required" });
     }
     const doc = await SupportMessage.create({
       storeId: req.storeId,
       senderRole: "STORE",
       senderId: req.user.id,
-      message: message.trim()
+      message,
+      attachmentUrl
     });
     res.status(201).json(doc);
   } catch (err) {
@@ -73,7 +76,7 @@ const listThreads = async (req, res, next) => {
           storeId: store._id,
           storeName: store.storeName,
           ownerName: store.ownerName,
-          lastMessage: lastMessage.message,
+          lastMessage: lastMessage.message || (lastMessage.attachmentUrl ? "📷 Photo" : ""),
           lastMessageAt: lastMessage.createdAt,
           lastSenderRole: lastMessage.senderRole,
           unreadCount
@@ -98,9 +101,10 @@ const getThreadMessages = async (req, res, next) => {
 
 const replyToThread = async (req, res, next) => {
   try {
-    const { message } = req.body;
-    if (!message || !message.trim()) {
-      return res.status(400).json({ message: "message is required" });
+    const message = (req.body.message || "").trim();
+    const attachmentUrl = req.file?.path || null;
+    if (!message && !attachmentUrl) {
+      return res.status(400).json({ message: "message or image is required" });
     }
     const store = await Store.findById(req.params.storeId);
     if (!store) return res.status(404).json({ message: "Store not found" });
@@ -109,7 +113,8 @@ const replyToThread = async (req, res, next) => {
       storeId: store._id,
       senderRole: "SUPER_ADMIN",
       senderId: req.user.id,
-      message: message.trim()
+      message,
+      attachmentUrl
     });
     res.status(201).json(doc);
   } catch (err) {
@@ -144,6 +149,39 @@ const markThreadRead = async (req, res, next) => {
   }
 };
 
+const getSupportSettings = async (req, res, next) => {
+  try {
+    let settings = await SupportSettings.findOne();
+    if (!settings) settings = await SupportSettings.create({});
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const updateSupportSettings = async (req, res, next) => {
+  try {
+    const { autoDeleteEnabled, retentionDays } = req.body;
+    if (retentionDays !== undefined && Number(retentionDays) <= 0) {
+      return res.status(400).json({ message: "retentionDays must be a positive number" });
+    }
+
+    const settings = await SupportSettings.findOneAndUpdate(
+      {},
+      {
+        $set: {
+          ...(autoDeleteEnabled !== undefined && { autoDeleteEnabled }),
+          ...(retentionDays !== undefined && { retentionDays: Number(retentionDays) })
+        }
+      },
+      { new: true, upsert: true }
+    );
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getStoreMessages,
   sendStoreMessage,
@@ -153,5 +191,7 @@ module.exports = {
   getThreadMessages,
   replyToThread,
   getAdminUnreadCount,
-  markThreadRead
+  markThreadRead,
+  getSupportSettings,
+  updateSupportSettings
 };

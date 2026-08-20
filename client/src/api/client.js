@@ -2,6 +2,10 @@ import axios from 'axios'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
+// The backend serves /uploads (attachments, logos, product images) from its
+// root, not under /api — strip the /api suffix to get that root origin.
+export const API_ORIGIN = BASE_URL.replace(/\/api\/?$/, '')
+
 export const api = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
