@@ -81,14 +81,14 @@ export default function Sidebar({ open = false, onClose }) {
             </div>
             <div>
               <p className="font-display text-sm font-extrabold leading-tight text-ink-900 dark:text-white">Rental System</p>
-              <p className="text-[11px] font-medium leading-tight text-ink-400">
+              <p className="text-[11px] font-medium leading-tight text-ink-400 dark:text-ink-300">
                 {isSuperAdmin ? 'Super Admin' : 'Store Console'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800 md:hidden"
+            className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-800 md:hidden"
           >
             <X size={18} />
           </button>
@@ -105,7 +105,7 @@ export default function Sidebar({ open = false, onClose }) {
                   'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                   isActive
                     ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
-                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100'
+                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800 dark:text-ink-100 dark:hover:bg-ink-800 dark:hover:text-white'
                 )
               }
             >

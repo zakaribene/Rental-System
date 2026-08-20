@@ -36,6 +36,7 @@ export default function NotificationBell() {
   const [toasts, setToasts] = useState([])
   const prevCount = useRef(0)
   const firstLoad = useRef(true)
+  const menuRef = useRef(null)
   // Bumped on every clear-all so any poll request already in flight is
   // discarded when it resolves — otherwise a stale response can overwrite
   // the freshly-cleared count back to its old value.
@@ -100,6 +101,15 @@ export default function NotificationBell() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    if (!open) return undefined
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
   const openPanel = () => {
     setOpen((v) => !v)
     if (!open) {
@@ -145,10 +155,10 @@ export default function NotificationBell() {
         ))}
       </div>
 
-      <div className="relative">
+      <div className="relative" ref={menuRef}>
         <button
           onClick={openPanel}
-          className={`relative flex h-10 w-10 items-center justify-center rounded-full text-ink-500 transition-colors hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800 ${
+          className={`relative flex h-10 w-10 items-center justify-center rounded-full text-ink-500 transition-colors hover:bg-ink-100 dark:text-white dark:hover:bg-ink-800 ${
             pulsing ? 'animate-[wiggle_0.4s_ease-in-out_2]' : ''
           }`}
         >
@@ -165,53 +175,50 @@ export default function NotificationBell() {
         </button>
 
         {open && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <div className="absolute right-0 z-20 mt-2 w-80 max-w-[90vw] overflow-hidden rounded-xl border border-ink-100 bg-white shadow-card animate-fadeIn dark:border-ink-800 dark:bg-ink-900">
-              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
-                <p className="text-sm font-bold text-ink-900 dark:text-white">Notifications</p>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={handleClearAll}
-                    className="flex items-center gap-1 text-xs font-semibold text-ink-400 transition-colors hover:text-danger-600"
-                  >
-                    <Trash2 size={12} />
-                    Clear all
-                  </button>
-                )}
-              </div>
-              <div className="max-h-96 overflow-y-auto">
-                {loadingList ? (
-                  <div className="flex h-24 items-center justify-center">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
-                  </div>
-                ) : notifications.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 py-10 text-center">
-                    <Megaphone size={22} className="text-ink-300" />
-                    <p className="text-sm text-ink-400">No notifications yet</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-ink-50 dark:divide-ink-800">
-                    {notifications.map((n) => (
-                      <div key={n._id} className="flex items-start gap-2.5 px-4 py-3">
-                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-500/15">
-                          {n.targetStoreId ? (
-                            <Building2 size={13} className="text-primary-600 dark:text-primary-300" />
-                          ) : (
-                            <Globe size={13} className="text-primary-600 dark:text-primary-300" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-ink-700 dark:text-ink-200">{n.message}</p>
-                          <p className="mt-0.5 text-[11px] text-ink-400">{formatDateTime(n.createdAt)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          <div className="absolute right-0 z-20 mt-2 w-80 max-w-[90vw] overflow-hidden rounded-xl border border-ink-100 bg-white shadow-card animate-fadeIn dark:border-ink-800 dark:bg-ink-900">
+            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
+              <p className="text-sm font-bold text-ink-900 dark:text-white">Notifications</p>
+              {notifications.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="flex items-center gap-1 text-xs font-semibold text-ink-400 transition-colors hover:text-danger-600"
+                >
+                  <Trash2 size={12} />
+                  Clear all
+                </button>
+              )}
             </div>
-          </>
+            <div className="max-h-96 overflow-y-auto">
+              {loadingList ? (
+                <div className="flex h-24 items-center justify-center">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <Megaphone size={22} className="text-ink-300" />
+                  <p className="text-sm text-ink-400">No notifications yet</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-ink-50 dark:divide-ink-800">
+                  {notifications.map((n) => (
+                    <div key={n._id} className="flex items-start gap-2.5 px-4 py-3">
+                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-500/15">
+                        {n.targetStoreId ? (
+                          <Building2 size={13} className="text-primary-600 dark:text-primary-300" />
+                        ) : (
+                          <Globe size={13} className="text-primary-600 dark:text-primary-300" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-ink-700 dark:text-ink-200">{n.message}</p>
+                        <p className="mt-0.5 text-[11px] text-ink-400">{formatDateTime(n.createdAt)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </>
