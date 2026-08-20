@@ -54,7 +54,7 @@ export default function AnnouncementBanner() {
 
   return (
     <div
-      className="relative isolate z-30 overflow-hidden shadow-lg"
+      className="relative isolate z-10 overflow-hidden shadow-lg"
       style={{ background: `linear-gradient(to right, ${shadeColor(baseColor, -15)}, ${baseColor}, ${shadeColor(baseColor, 12)})` }}
     >
       <div

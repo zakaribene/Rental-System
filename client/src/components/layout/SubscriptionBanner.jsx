@@ -98,7 +98,7 @@ export default function SubscriptionBanner() {
 
   return (
     <div
-      className="relative isolate z-30 mx-3 overflow-hidden rounded-2xl shadow-lg sm:mx-4 lg:mx-6"
+      className="relative isolate z-10 mx-3 overflow-hidden rounded-2xl shadow-lg sm:mx-4 lg:mx-6"
       style={{ background: `linear-gradient(to right, ${shadeColor(baseColor, -15)}, ${baseColor}, ${shadeColor(baseColor, 12)})` }}
     >
       <div
