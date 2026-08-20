@@ -13,6 +13,7 @@ const titles = {
   '/admin/notifications': 'Notifications',
   '/admin/subscriptions': 'Subscriptions',
   '/admin/activity-log': 'Activity Log',
+  '/admin/support': 'Support',
   '/store': 'Overview',
   '/store/products': 'Products',
   '/store/customers': 'Customers',
@@ -22,6 +23,7 @@ const titles = {
   '/store/reports': 'Reports',
   '/store/activity-log': 'Activity Log',
   '/store/users': 'Staff',
+  '/store/help': 'Help',
 }
 
 export default function AppLayout() {

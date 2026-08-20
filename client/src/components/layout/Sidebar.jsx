@@ -14,12 +14,15 @@ import {
   Megaphone,
   CalendarClock,
   History,
+  Headphones,
+  LifeBuoy,
   X,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAuth } from '../../context/AuthContext'
 import { getMyStore } from '../../api/myStore'
 import usePermissions from '../../hooks/usePermissions'
+import useSupportUnread from '../../hooks/useSupportUnread'
 
 const superAdminNav = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -27,6 +30,7 @@ const superAdminNav = [
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: CalendarClock },
   { to: '/admin/notifications', label: 'Notifications', icon: Megaphone },
   { to: '/admin/activity-log', label: 'Activity Log', icon: History },
+  { to: '/admin/support', label: 'Support', icon: Headphones, badge: 'support' },
 ]
 
 const storeNav = [
@@ -39,11 +43,13 @@ const storeNav = [
   { to: '/store/reports', label: 'Reports', icon: BarChart3, module: 'reports' },
   { to: '/store/users', label: 'Staff', icon: UserCog, ownerOnly: true },
   { to: '/store/activity-log', label: 'Activity Log', icon: History, module: 'activityLog' },
+  { to: '/store/help', label: 'Help', icon: LifeBuoy, badge: 'support' },
 ]
 
 export default function Sidebar({ open = false, onClose }) {
   const { user } = useAuth()
   const { can } = usePermissions()
+  const supportUnread = useSupportUnread()
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
   const showUsers = user?.role === 'STORE_OWNER'
   const [salesEnabled, setSalesEnabled] = useState(false)
@@ -110,7 +116,12 @@ export default function Sidebar({ open = false, onClose }) {
               }
             >
               <item.icon size={18} strokeWidth={2.25} />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.badge === 'support' && supportUnread > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-500 px-1 text-[10px] font-bold text-white">
+                  {supportUnread > 99 ? '99+' : supportUnread}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

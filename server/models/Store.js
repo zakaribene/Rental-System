@@ -9,6 +9,8 @@ const storeSchema = new mongoose.Schema({
   salesEnabled: { type: Boolean, default: false },
   logoUrl: { type: String },
   notificationsLastReadAt: { type: Date, default: () => new Date(0) },
+  supportStoreLastReadAt: { type: Date, default: () => new Date(0) },
+  supportAdminLastReadAt: { type: Date, default: () => new Date(0) },
   subscriptionEndsAt: { type: Date, default: null },
   subscriptionStatus: { type: String, enum: ["active", "grace", "expired"], default: "active" },
   gracePeriodEndsAt: { type: Date, default: null },

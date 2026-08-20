@@ -9,6 +9,7 @@ import Stores from './pages/superadmin/Stores'
 import AdminNotifications from './pages/superadmin/Notifications'
 import Subscriptions from './pages/superadmin/Subscriptions'
 import AdminActivityLog from './pages/superadmin/ActivityLog'
+import AdminSupport from './pages/superadmin/Support'
 import StoreDashboard from './pages/store/Dashboard'
 import Products from './pages/store/Products'
 import Customers from './pages/store/Customers'
@@ -18,6 +19,7 @@ import Payments from './pages/store/Payments'
 import Reports from './pages/store/Reports'
 import ActivityLog from './pages/store/ActivityLog'
 import StaffUsers from './pages/store/Users'
+import Help from './pages/store/Help'
 import { FullPageSpinner } from './components/ui/Misc'
 
 function RootRedirect() {
@@ -47,6 +49,7 @@ export default function App() {
                   <Route path="/admin/notifications" element={<AdminNotifications />} handle={{ title: 'Notifications' }} />
                   <Route path="/admin/subscriptions" element={<Subscriptions />} handle={{ title: 'Subscriptions' }} />
                   <Route path="/admin/activity-log" element={<AdminActivityLog />} handle={{ title: 'Activity Log' }} />
+                  <Route path="/admin/support" element={<AdminSupport />} handle={{ title: 'Support' }} />
                 </Route>
               </Route>
 
@@ -60,6 +63,7 @@ export default function App() {
                   <Route path="/store/payments" element={<Payments />} handle={{ title: 'Payments' }} />
                   <Route path="/store/reports" element={<Reports />} handle={{ title: 'Reports' }} />
                   <Route path="/store/activity-log" element={<ActivityLog />} handle={{ title: 'Activity Log' }} />
+                  <Route path="/store/help" element={<Help />} handle={{ title: 'Help' }} />
                   <Route element={<RoleRoute roles={['STORE_OWNER']} />}>
                     <Route path="/store/users" element={<StaffUsers />} handle={{ title: 'Staff' }} />
                   </Route>
