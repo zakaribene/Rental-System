@@ -13,6 +13,7 @@ export default function Help() {
   const prevCount = useRef(0)
   const firstLoad = useRef(true)
   const bottomRef = useRef(null)
+  const textareaRef = useRef(null)
 
   useEffect(() => {
     const load = () => {
@@ -44,6 +45,7 @@ export default function Help() {
     if (!value || sending) return
     setSending(true)
     setText('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     try {
       const msg = await sendStoreMessage(value)
       setMessages((m) => [...m, msg])
@@ -51,6 +53,20 @@ export default function Help() {
     } finally {
       setSending(false)
     }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend(e)
+    }
+  }
+
+  const handleChange = (e) => {
+    setText(e.target.value)
+    const el = e.target
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }
 
   return (
@@ -121,12 +137,18 @@ export default function Help() {
           )}
         </div>
 
-        <form className="flex items-center gap-2 border-t border-ink-100 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-black/10" onSubmit={handleSend}>
-          <input
+        <form
+          className="flex items-end gap-2 border-t border-ink-100 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-black/10"
+          onSubmit={handleSend}
+        >
+          <textarea
+            ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type your message..."
-            className="h-11 w-full rounded-full border border-ink-200 bg-white px-4 text-sm text-ink-900 placeholder:text-ink-400 transition-colors focus:border-primary-400 focus:outline-none focus:ring-4 focus:ring-primary-100 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-ink-500 dark:focus:border-primary-400 dark:focus:ring-primary-500/20"
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message... (Shift+Enter for a new line)"
+            rows={1}
+            className="max-h-[120px] min-h-[44px] w-full resize-none rounded-3xl border border-ink-200 bg-white px-4 py-2.5 text-sm leading-relaxed text-ink-900 placeholder:text-ink-400 transition-colors focus:border-primary-400 focus:outline-none focus:ring-4 focus:ring-primary-100 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-ink-500 dark:focus:border-primary-400 dark:focus:ring-primary-500/20"
           />
           <button
             type="submit"
