@@ -109,11 +109,11 @@ export default function SubscriptionBanner() {
         }}
       />
       <div className="relative mx-auto flex max-w-5xl flex-col items-center gap-2.5 px-4 py-3 text-center sm:px-6 lg:px-8">
-        <div className="flex items-center gap-2.5">
+        <div className="flex w-full max-w-full items-start gap-2.5 sm:items-center">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-inset ring-white/30">
             <AlertTriangle size={17} strokeWidth={2.25} color="#ffffff" />
           </span>
-          <p className="text-sm font-bold leading-snug sm:text-base" style={{ color: '#ffffff' }}>
+          <p className="min-w-0 flex-1 text-left text-sm font-bold leading-snug sm:text-center sm:text-base" style={{ color: '#ffffff' }}>
             {store.graceMessage || `Subscription-kaagu wuu dhammaaday. Waxaa lagu siiyey ${formatGraceDuration(store)} oo dheeraad ah. Fadlan bixi lacagta Subscription-ka inta muddadan ay socoto si adeeggaagu u sii shaqeeyo.`}
           </p>
         </div>
