@@ -49,6 +49,7 @@ router.post("/upload-document", uploadDocument.single("image"), (req, res) => {
  *             properties:
  *               customerId: { type: string }
  *               expectedReturnDate: { type: string, format: date }
+ *               discount: { type: number, description: "Flat amount off the rent subtotal, can't exceed it" }
  *               items:
  *                 type: array
  *                 items:
@@ -61,12 +62,15 @@ router.post("/upload-document", uploadDocument.single("image"), (req, res) => {
  *                 items:
  *                   type: object
  *                   properties:
- *                     depositType: { type: string, enum: [CASH, DOCUMENT, GUARANTOR, CARD] }
+ *                     depositType: { type: string, enum: [CASH, DOCUMENT, GUARANTOR, CARD, GOLD] }
  *                     cashAmount: { type: number }
  *                     paymentMethodId: { type: string }
  *                     documentImageUrl: { type: string }
  *                     guarantorName: { type: string }
  *                     guarantorPhone: { type: string }
+ *                     goldDescription: { type: string }
+ *                     goldWeight: { type: number }
+ *                     goldImageUrl: { type: string }
  *     responses:
  *       201: { description: Rental created }
  *   get:
@@ -114,6 +118,7 @@ router.get("/", getRentals);
  *             properties:
  *               customerId: { type: string }
  *               expectedReturnDate: { type: string, format: date }
+ *               discount: { type: number, description: "Flat amount off the rent subtotal, can't exceed it" }
  *               items:
  *                 type: array
  *                 items:
@@ -201,6 +206,10 @@ router.post(
  *                 type: object
  *                 description: map of productId -> cost
  *               refundPaymentMethodId: { type: string }
+ *               depositsReturned:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: RentalDeposit ids for physical collateral (gold/document) handed back to the customer
  *     responses:
  *       200: { description: Rental returned, deposit/debt settled }
  *       404: { description: Not found }

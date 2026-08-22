@@ -12,6 +12,7 @@ const rentalTransactionSchema = new mongoose.Schema({
     }
   ],
   totalRentFee: { type: Number, required: true },
+  discount: { type: Number, default: 0 },
   rentalDays: { type: Number, default: 1 },
   rentPaid: { type: Number, default: 0 },
   dateOut: { type: Date, default: Date.now },

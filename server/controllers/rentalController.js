@@ -71,17 +71,22 @@ async function createDepositRecord({ storeId, transaction, customer, deposit, us
     documentImageUrl: deposit.documentImageUrl,
     guarantorName: deposit.guarantorName,
     guarantorPhone: deposit.guarantorPhone,
+    goldDescription: deposit.goldDescription,
+    goldWeight: deposit.goldWeight,
+    goldImageUrl: deposit.goldImageUrl,
     createdBy: userId
   });
 }
 
 const createRental = async (req, res, next) => {
   try {
-    const { customerId, items, expectedReturnDate, deposits } = req.body;
+    const { customerId, items, expectedReturnDate, deposits, discount } = req.body;
 
     if (!customerId || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "customerId and items are required" });
     }
+
+    const resolvedDiscount = Math.max(0, Number(discount) || 0);
 
     const customer = await Customer.findOne({ _id: customerId, storeId: req.storeId });
     if (!customer) return res.status(404).json({ message: "Customer not found" });
@@ -111,7 +116,11 @@ const createRental = async (req, res, next) => {
       touchedProducts.push({ product, quantity });
     }
 
-    const totalRentFee = rentSubtotal * rentalDays;
+    const subtotal = rentSubtotal * rentalDays;
+    if (resolvedDiscount > subtotal) {
+      return res.status(400).json({ message: `Discount cannot exceed the rental subtotal of ${subtotal}` });
+    }
+    const totalRentFee = subtotal - resolvedDiscount;
 
     const transaction = await RentalTransaction.create({
       storeId: req.storeId,
@@ -119,6 +128,7 @@ const createRental = async (req, res, next) => {
       staffUserId: req.user.id,
       items: resolvedItems,
       totalRentFee,
+      discount: resolvedDiscount,
       rentalDays,
       dateOut,
       expectedReturnDate,
@@ -171,7 +181,9 @@ const getRentalById = async (req, res, next) => {
       .populate("staffUserId", "name")
       .populate("returnDetails.returnedBy", "name");
     if (!rental) return res.status(404).json({ message: "Rental not found" });
-    const deposits = await RentalDeposit.find({ transactionId: rental._id }).populate("createdBy", "name");
+    const deposits = await RentalDeposit.find({ transactionId: rental._id })
+      .populate("createdBy", "name")
+      .populate("returnedBy", "name");
     const payments = await Payment.find({ transactionId: rental._id })
       .populate("paymentMethodId", "name")
       .populate("recordedBy", "name")
@@ -193,11 +205,13 @@ const updateRental = async (req, res, next) => {
       return res.status(409).json({ message: "Rental is cancelled — it can no longer be edited" });
     }
 
-    const { customerId, items, expectedReturnDate } = req.body;
+    const { customerId, items, expectedReturnDate, discount } = req.body;
 
     if (!customerId || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "customerId and items are required" });
     }
+
+    const resolvedDiscount = discount === undefined ? rental.discount || 0 : Math.max(0, Number(discount) || 0);
 
     const customer = await Customer.findOne({ _id: customerId, storeId: req.storeId });
     if (!customer) return res.status(404).json({ message: "Customer not found" });
@@ -239,7 +253,11 @@ const updateRental = async (req, res, next) => {
     }
 
     const rentalDays = daysBetween(rental.dateOut, expectedReturnDate);
-    const totalRentFee = rentSubtotal * rentalDays;
+    const subtotal = rentSubtotal * rentalDays;
+    if (resolvedDiscount > subtotal) {
+      return res.status(400).json({ message: `Discount cannot exceed the rental subtotal of ${subtotal}` });
+    }
+    const totalRentFee = subtotal - resolvedDiscount;
 
     for (const { product, delta } of touchedProducts.values()) {
       if (!delta) continue;
@@ -251,6 +269,7 @@ const updateRental = async (req, res, next) => {
     rental.customerId = customerId;
     rental.items = resolvedItems;
     rental.totalRentFee = totalRentFee;
+    rental.discount = resolvedDiscount;
     rental.rentalDays = rentalDays;
     rental.expectedReturnDate = expectedReturnDate;
     await rental.save();
@@ -277,7 +296,17 @@ const addRentalDeposit = async (req, res, next) => {
       return res.status(409).json({ message: "Rental is cancelled — deposits can no longer be added" });
     }
 
-    const { depositType, cashAmount, paymentMethodId, documentImageUrl, guarantorName, guarantorPhone } = req.body;
+    const {
+      depositType,
+      cashAmount,
+      paymentMethodId,
+      documentImageUrl,
+      guarantorName,
+      guarantorPhone,
+      goldDescription,
+      goldWeight,
+      goldImageUrl
+    } = req.body;
     if (!depositType) {
       return res.status(400).json({ message: "depositType is required" });
     }
@@ -287,7 +316,17 @@ const addRentalDeposit = async (req, res, next) => {
       storeId: req.storeId,
       transaction,
       customer,
-      deposit: { depositType, cashAmount, paymentMethodId, documentImageUrl, guarantorName, guarantorPhone },
+      deposit: {
+        depositType,
+        cashAmount,
+        paymentMethodId,
+        documentImageUrl,
+        guarantorName,
+        guarantorPhone,
+        goldDescription,
+        goldWeight,
+        goldImageUrl
+      },
       userId: req.user.id
     });
 
@@ -306,12 +345,14 @@ const returnRental = async (req, res, next) => {
       itemsDamaged = [],
       damageCosts = {},
       refundPaymentMethodId,
-      lateFee = 0
+      lateFee = 0,
+      depositsReturned = []
     } = req.body;
 
     const okIds = cleanIds(itemsReturnedOk);
     const missingIds = cleanIds(itemsMissing);
     const damagedIds = cleanIds(itemsDamaged);
+    const returnedDepositIds = cleanIds(depositsReturned);
 
     const transaction = await RentalTransaction.findOne({ _id: req.params.id, storeId: req.storeId });
     if (!transaction) return res.status(404).json({ message: "Rental not found" });
@@ -399,6 +440,16 @@ const returnRental = async (req, res, next) => {
           damageDebt > 0 ? ` — deposit ${cashDepositAlreadyPaid} minus damage/missing costs ${costOfDamagedOrMissingItems}` : ""
         }`
       });
+    }
+
+    // Physical collateral (gold, a held document/ID) handed back to the
+    // customer alongside their items — tracked separately from the cash
+    // deposit refund above since there's no payment record for it.
+    if (returnedDepositIds.length) {
+      await RentalDeposit.updateMany(
+        { _id: { $in: returnedDepositIds }, transactionId: transaction._id, returnedAt: { $exists: false } },
+        { $set: { returnedAt: new Date(), returnedBy: req.user.id } }
+      );
     }
 
     const populatedTransaction = await RentalTransaction.findById(transaction._id)

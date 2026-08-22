@@ -15,6 +15,7 @@ import {
   Download,
   Eye,
   Pencil,
+  Coins,
 } from 'lucide-react'
 import { listRentals, createRental, updateRental, getRental, addRentalDeposit, returnRental, cancelRental, uploadDepositDocument } from '../../api/rentals'
 import { listCustomers } from '../../api/customers'
@@ -297,17 +298,23 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
   const [customerId, setCustomerId] = useState('')
   const [items, setItems] = useState([{ productId: '', quantity: 1 }])
   const [expectedReturnDate, setExpectedReturnDate] = useState('')
+  const [discount, setDiscount] = useState('')
   const [depositType, setDepositType] = useState('NONE')
   const [cashAmount, setCashAmount] = useState('')
   const [paymentMethodId, setPaymentMethodId] = useState('')
   const [guarantorName, setGuarantorName] = useState('')
   const [guarantorPhone, setGuarantorPhone] = useState('')
   const [documentImageUrl, setDocumentImageUrl] = useState('')
+  const [goldDescription, setGoldDescription] = useState('')
+  const [goldWeight, setGoldWeight] = useState('')
+  const [goldImageUrl, setGoldImageUrl] = useState('')
   const [existingDeposits, setExistingDeposits] = useState([])
   const [depositsLoading, setDepositsLoading] = useState(false)
   const [addingDeposit, setAddingDeposit] = useState(false)
   const [documentUploading, setDocumentUploading] = useState(false)
+  const [goldUploading, setGoldUploading] = useState(false)
   const documentInputRef = useRef(null)
+  const goldInputRef = useRef(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -317,12 +324,16 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     setCustomerId('')
     setItems([{ productId: '', quantity: 1 }])
     setExpectedReturnDate('')
+    setDiscount('')
     setDepositType('NONE')
     setCashAmount('')
     setPaymentMethodId('')
     setGuarantorName('')
     setGuarantorPhone('')
     setDocumentImageUrl('')
+    setGoldDescription('')
+    setGoldWeight('')
+    setGoldImageUrl('')
     setError('')
   }
 
@@ -332,12 +343,16 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
       setCustomerId(rental.customerId?._id || rental.customerId || '')
       setItems((rental.items || []).map((it) => ({ productId: it.productId?._id || it.productId, quantity: it.quantity })))
       setExpectedReturnDate(rental.expectedReturnDate ? toDatetimeLocalValue(new Date(rental.expectedReturnDate)) : '')
+      setDiscount(rental.discount ? String(rental.discount) : '')
       setDepositType('NONE')
       setCashAmount('')
       setPaymentMethodId('')
       setGuarantorName('')
       setGuarantorPhone('')
       setDocumentImageUrl('')
+      setGoldDescription('')
+      setGoldWeight('')
+      setGoldImageUrl('')
       setDepositsLoading(true)
       getRental(rental._id)
         .then((data) => setExistingDeposits(data.deposits))
@@ -356,6 +371,8 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     if (depositType === 'CASH' && cashAmount) payload = { depositType: 'CASH', cashAmount: Number(cashAmount), paymentMethodId }
     else if (depositType === 'GUARANTOR' && guarantorName) payload = { depositType: 'GUARANTOR', guarantorName, guarantorPhone }
     else if (depositType === 'DOCUMENT' && documentImageUrl) payload = { depositType: 'DOCUMENT', documentImageUrl }
+    else if (depositType === 'GOLD' && goldDescription)
+      payload = { depositType: 'GOLD', goldDescription, goldWeight: goldWeight ? Number(goldWeight) : undefined, goldImageUrl }
     if (!payload) {
       setError('Fill in the deposit details before adding it.')
       return
@@ -372,6 +389,9 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
       setGuarantorName('')
       setGuarantorPhone('')
       setDocumentImageUrl('')
+      setGoldDescription('')
+      setGoldWeight('')
+      setGoldImageUrl('')
     } catch (err) {
       setError(apiErrorMessage(err, 'Failed to add deposit'))
     } finally {
@@ -395,6 +415,22 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     }
   }
 
+  const handleGoldImageSelect = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError('')
+    setGoldUploading(true)
+    try {
+      const { url } = await uploadDepositDocument(file)
+      setGoldImageUrl(url)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to upload photo'))
+    } finally {
+      setGoldUploading(false)
+      if (goldInputRef.current) goldInputRef.current.value = ''
+    }
+  }
+
   const updateItem = (idx, patch) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
   }
@@ -406,8 +442,9 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     .map((it) => products.find((p) => p._id === it.productId))
     .filter(Boolean)
   const rentalDays = daysBetween(mode === 'edit' && rental ? rental.dateOut : new Date(), expectedReturnDate)
-  const estimatedSubtotal = selectedProducts.reduce((sum, p, i) => sum + p.rentPrice * (Number(items[i]?.quantity) || 1), 0)
-  const estimatedTotal = estimatedSubtotal * rentalDays
+  const estimatedSubtotal = selectedProducts.reduce((sum, p, i) => sum + p.rentPrice * (Number(items[i]?.quantity) || 1), 0) * rentalDays
+  const discountAmount = Math.min(estimatedSubtotal, Number(discount) || 0)
+  const estimatedTotal = estimatedSubtotal - discountAmount
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -426,6 +463,7 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           customerId,
           items: cleanItems,
           expectedReturnDate: expectedReturnDate || undefined,
+          discount: discount === '' ? undefined : Number(discount),
         })
       } else {
         const deposits = []
@@ -435,11 +473,14 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           deposits.push({ depositType: 'GUARANTOR', guarantorName, guarantorPhone })
         } else if (depositType === 'DOCUMENT' && documentImageUrl) {
           deposits.push({ depositType: 'DOCUMENT', documentImageUrl })
+        } else if (depositType === 'GOLD' && goldDescription) {
+          deposits.push({ depositType: 'GOLD', goldDescription, goldWeight: goldWeight ? Number(goldWeight) : undefined, goldImageUrl })
         }
         await createRental({
           customerId,
           items: cleanItems,
           expectedReturnDate: expectedReturnDate || undefined,
+          discount: discount === '' ? undefined : Number(discount),
           deposits: deposits.length ? deposits : undefined,
         })
       }
@@ -519,11 +560,30 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
               </div>
             ))}
           </div>
-          {estimatedTotal > 0 && (
-            <p className="mt-2 text-sm font-medium text-ink-600">
-              Estimated total ({rentalDays} day{rentalDays === 1 ? '' : 's'}):{' '}
-              <span className="font-bold text-primary-700">{formatMoney(estimatedTotal)}</span>
-            </p>
+          {estimatedSubtotal > 0 && (
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <Field label="Discount" hint="Optional — flat amount off the total" className="w-40">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                />
+              </Field>
+              <div className="pb-1 text-right text-sm font-medium text-ink-600">
+                {discountAmount > 0 && (
+                  <p className="text-ink-400">
+                    Subtotal {formatMoney(estimatedSubtotal)} − discount {formatMoney(discountAmount)}
+                  </p>
+                )}
+                <p>
+                  Estimated total ({rentalDays} day{rentalDays === 1 ? '' : 's'}):{' '}
+                  <span className="font-bold text-primary-700">{formatMoney(estimatedTotal)}</span>
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
@@ -562,7 +622,9 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
                         ? `Cash · ${formatMoney(d.cashAmount)}`
                         : d.depositType === 'GUARANTOR'
                         ? `Guarantor · ${d.guarantorName}${d.guarantorPhone ? ` · ${d.guarantorPhone}` : ''}`
-                        : 'Document / ID held'}
+                        : d.depositType === 'GOLD'
+                        ? `Gold · ${d.goldDescription}${d.goldWeight ? ` · ${d.goldWeight}g` : ''}${d.returnedAt ? ' · Returned' : ''}`
+                        : `Document / ID held${d.returnedAt ? ' · Returned' : ''}`}
                     </span>
                     <span className="text-ink-400">{formatDateTime(d.createdAt)}</span>
                   </div>
@@ -576,6 +638,7 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
             <option value="CASH">Cash</option>
             <option value="GUARANTOR">Guarantor</option>
             <option value="DOCUMENT">Document / ID (e.g. passport)</option>
+            <option value="GOLD">Gold</option>
           </Select>
 
           {depositType === 'CASH' && (
@@ -645,6 +708,56 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
             </div>
           )}
 
+          {depositType === 'GOLD' && (
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Description" required>
+                  <Input
+                    value={goldDescription}
+                    onChange={(e) => setGoldDescription(e.target.value)}
+                    placeholder="e.g. Gold necklace, 21k"
+                  />
+                </Field>
+                <Field label="Weight (grams)" hint="Optional">
+                  <Input type="number" min="0" step="0.01" value={goldWeight} onChange={(e) => setGoldWeight(e.target.value)} />
+                </Field>
+              </div>
+              <input
+                ref={goldInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handleGoldImageSelect}
+                className="hidden"
+              />
+              {goldImageUrl ? (
+                <div className="flex items-center gap-3 rounded-lg border border-ink-200 p-2">
+                  <img src={goldImageUrl} alt="Gold" className="h-16 w-16 rounded-md object-cover" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-ink-800">Photo uploaded</p>
+                    <p className="text-xs text-ink-400">Held as collateral for this rental</p>
+                  </div>
+                  <Button type="button" size="sm" variant="ghost" icon={Trash2} onClick={() => setGoldImageUrl('')} />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => goldInputRef.current?.click()}
+                  disabled={goldUploading}
+                  className="flex h-20 w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-ink-200 text-ink-400 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:opacity-60"
+                >
+                  {goldUploading ? (
+                    <Spinner size={18} />
+                  ) : (
+                    <>
+                      <Coins size={16} />
+                      <span className="text-xs font-medium">Upload a photo (optional)</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
           {mode === 'edit' && depositType !== 'NONE' && (
             <div className="mt-3 flex justify-end">
               <Button type="button" size="sm" loading={addingDeposit} onClick={handleAddDeposit}>
@@ -663,9 +776,14 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
   const [damageCosts, setDamageCosts] = useState({})
   const [refundMethodId, setRefundMethodId] = useState('')
   const [lateFee, setLateFee] = useState('')
+  const [depositsToReturn, setDepositsToReturn] = useState({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [pdfGenerating, setPdfGenerating] = useState(false)
+
+  const returnableDeposits = (detail?.deposits || []).filter(
+    (d) => (d.depositType === 'GOLD' || d.depositType === 'DOCUMENT') && !d.returnedAt
+  )
 
   useEffect(() => {
     if (detail?.transaction) {
@@ -678,6 +796,14 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
       setDamageCosts({})
       setLateFee('')
       setError('')
+      // Default to "yes, hand it back" — that's the common case on a normal return.
+      const depositDefaults = {}
+      ;(detail.deposits || [])
+        .filter((d) => (d.depositType === 'GOLD' || d.depositType === 'DOCUMENT') && !d.returnedAt)
+        .forEach((d) => {
+          depositDefaults[d._id] = true
+        })
+      setDepositsToReturn(depositDefaults)
     }
   }, [detail])
 
@@ -709,6 +835,10 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
       else if (state === 'damaged') itemsDamaged.push(id)
     })
 
+    const depositsReturned = Object.entries(depositsToReturn)
+      .filter(([, checked]) => checked)
+      .map(([id]) => id)
+
     setSaving(true)
     try {
       await returnRental(transaction._id, {
@@ -718,6 +848,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
         damageCosts,
         refundPaymentMethodId: refundMethodId || undefined,
         lateFee: isOverdue ? Number(lateFee) || 0 : 0,
+        depositsReturned,
       })
       onReturned()
     } catch (err) {
@@ -852,6 +983,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
                   ({transaction.rentalDays || 1} day{(transaction.rentalDays || 1) === 1 ? '' : 's'})
                 </span>
               </p>
+              {transaction.discount > 0 && <p className="text-xs text-success-600">{formatMoney(transaction.discount)} discount applied</p>}
             </div>
             <div>
               <p className="text-ink-400">Status</p>
@@ -921,6 +1053,35 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
                   })}
                 </div>
               </div>
+
+              {returnableDeposits.length > 0 && (
+                <div>
+                  <span className="mb-2 block text-sm font-medium text-ink-700">Held collateral</span>
+                  <div className="space-y-2">
+                    {returnableDeposits.map((d) => (
+                      <label
+                        key={d._id}
+                        className="flex cursor-pointer items-center gap-3 rounded-lg border border-ink-100 p-3 text-sm dark:border-ink-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!depositsToReturn[d._id]}
+                          onChange={(e) => setDepositsToReturn((s) => ({ ...s, [d._id]: e.target.checked }))}
+                          className="h-4 w-4 rounded border-ink-300 text-primary-600 focus:ring-primary-300"
+                        />
+                        <Coins size={16} className="shrink-0 text-ink-400" />
+                        <span className="flex-1">
+                          <span className="font-medium text-ink-800 dark:text-ink-100">
+                            {d.depositType === 'GOLD' ? d.goldDescription || 'Gold' : 'Document / ID'}
+                          </span>
+                          {d.depositType === 'GOLD' && d.goldWeight ? ` · ${d.goldWeight}g` : ''}
+                        </span>
+                        <span className="text-xs text-ink-400">Return to customer</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <Field label="Refund payment method" hint="Used only if a deposit refund is due">
                 <Select value={refundMethodId} onChange={(e) => setRefundMethodId(e.target.value)}>
@@ -1017,6 +1178,7 @@ function DepositTicker({ deposits, returnDetails, payments }) {
   const cashDeposits = (deposits || []).filter((d) => d.depositType === 'CASH')
   const totalCollected = cashDeposits.reduce((sum, d) => sum + (d.cashAmount || 0), 0)
   const documentDeposits = (deposits || []).filter((d) => d.depositType === 'DOCUMENT')
+  const goldDeposits = (deposits || []).filter((d) => d.depositType === 'GOLD')
   const guarantorDeposits = (deposits || []).filter((d) => d.depositType === 'GUARANTOR')
   const refunded = returnDetails?.depositRefunded || 0
 
@@ -1058,7 +1220,26 @@ function DepositTicker({ deposits, returnDetails, payments }) {
               ) : (
                 <FileText size={18} className="text-ink-400" />
               )}
-              <p className="text-xs font-medium text-ink-600">Document / ID held as collateral</p>
+              <p className="flex-1 text-xs font-medium text-ink-600">Document / ID held as collateral</p>
+              <Badge tone={d.returnedAt ? 'success' : 'neutral'}>{d.returnedAt ? 'Returned' : 'Held'}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {goldDeposits.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {goldDeposits.map((d) => (
+            <div key={d._id} className="flex items-center gap-3 rounded-lg border border-ink-100 p-2">
+              {d.goldImageUrl ? (
+                <img src={d.goldImageUrl} alt="Gold" className="h-12 w-12 rounded-md object-cover" />
+              ) : (
+                <Coins size={18} className="text-ink-400" />
+              )}
+              <p className="flex-1 text-xs font-medium text-ink-600">
+                {d.goldDescription || 'Gold'} held as collateral{d.goldWeight ? ` · ${d.goldWeight}g` : ''}
+              </p>
+              <Badge tone={d.returnedAt ? 'success' : 'neutral'}>{d.returnedAt ? 'Returned' : 'Held'}</Badge>
             </div>
           ))}
         </div>
@@ -1101,13 +1282,30 @@ function RentalHistory({ payments, deposits, returnDetails }) {
     ...nonCashDeposits.map((d) => ({
       key: d._id,
       date: d.createdAt,
-      icon: FileText,
+      icon: d.depositType === 'GOLD' ? Coins : FileText,
       tone: 'text-ink-500',
       bg: 'bg-ink-100',
-      label: d.depositType === 'GUARANTOR' ? 'Guarantor held' : 'Document held',
-      note: d.depositType === 'GUARANTOR' ? `${d.guarantorName || ''} ${d.guarantorPhone || ''}`.trim() : 'ID / passport as collateral',
+      label: d.depositType === 'GUARANTOR' ? 'Guarantor held' : d.depositType === 'GOLD' ? 'Gold held' : 'Document held',
+      note:
+        d.depositType === 'GUARANTOR'
+          ? `${d.guarantorName || ''} ${d.guarantorPhone || ''}`.trim()
+          : d.depositType === 'GOLD'
+          ? `${d.goldDescription || ''}${d.goldWeight ? ` · ${d.goldWeight}g` : ''}`
+          : 'ID / passport as collateral',
       staffName: d.createdBy?.name,
     })),
+    ...nonCashDeposits
+      .filter((d) => d.returnedAt)
+      .map((d) => ({
+        key: `${d._id}-returned`,
+        date: d.returnedAt,
+        icon: d.depositType === 'GOLD' ? Coins : FileText,
+        tone: 'text-success-600',
+        bg: 'bg-success-50',
+        label: d.depositType === 'GOLD' ? 'Gold returned' : 'Document returned',
+        note: 'Handed back to the customer',
+        staffName: d.returnedBy?.name,
+      })),
     ...(returnDetails?.lateFee > 0
       ? [
           {
