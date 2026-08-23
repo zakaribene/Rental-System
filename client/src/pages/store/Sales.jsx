@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Plus, ShoppingBag, Trash2, Search, Receipt, CreditCard, ShieldAlert, Eye, Pencil, Printer, Download } from 'lucide-react'
-import { listSales, createSale, updateSale } from '../../api/sales'
+import { Plus, ShoppingBag, Trash2, Search, Receipt, CreditCard, ShieldAlert, Eye, Pencil, Printer, Download, Banknote } from 'lucide-react'
+import { listSales, createSale, updateSale, getSale } from '../../api/sales'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
 import { listPaymentMethods } from '../../api/payments'
@@ -23,6 +23,7 @@ import Badge from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
 import { formatMoney, formatDateTime, paymentSplitsLabel } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
+import { downloadReceiptPdf, receiptBadge } from '../../lib/receiptPdf'
 
 function paidStatus(sale) {
   const paid = sale.amountPaid || 0
@@ -218,6 +219,7 @@ export default function Sales() {
           setFormTarget(null)
           afterMutate()
         }}
+        onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
       />
 
       <SaleDetailModal target={detailTarget} store={store} onClose={() => setDetailTarget(null)} />
@@ -225,7 +227,7 @@ export default function Sales() {
   )
 }
 
-function SaleFormModal({ open, mode, sale, onClose, customers, products, methods, onSaved }) {
+function SaleFormModal({ open, mode, sale, onClose, customers, products, methods, onSaved, onCustomerCreated }) {
   const [customerId, setCustomerId] = useState('')
   const [items, setItems] = useState([{ productId: '', quantity: 1 }])
   const [discountAmount, setDiscountAmount] = useState('')
@@ -345,7 +347,14 @@ function SaleFormModal({ open, mode, sale, onClose, customers, products, methods
 
         <SectionLabel>Customer</SectionLabel>
         <Field hint="Optional — leave blank for a walk-in sale">
-          <CustomerPicker customers={customers} value={customerId} onChange={setCustomerId} allowWalkIn />
+          <CustomerPicker
+            customers={customers}
+            value={customerId}
+            onChange={setCustomerId}
+            allowWalkIn
+            allowCreate
+            onCreated={onCustomerCreated}
+          />
         </Field>
 
         <SectionLabel>Items</SectionLabel>
@@ -487,14 +496,27 @@ function SaleFormModal({ open, mode, sale, onClose, customers, products, methods
 }
 
 function SaleDetailModal({ target, store, onClose }) {
-  const [pdfGenerating, setPdfGenerating] = useState(false)
   const [error, setError] = useState('')
+  const [logoFailed, setLogoFailed] = useState(false)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
+  const [payments, setPayments] = useState([])
 
   const sale = target?.sale
 
   useEffect(() => {
     if (!target) return
     setError('')
+    setLogoFailed(false)
+    setPayments([])
+    // The sale row from the list only carries its *initial* payment
+    // split(s) — a later debt settlement never touches that array — so
+    // fetch the real payment history to show who collected what, via
+    // which method, and when (mirrors the rental receipt's History).
+    if (sale?._id) {
+      getSale(sale._id)
+        .then((data) => setPayments(data.payments || []))
+        .catch(() => setPayments([]))
+    }
     if (target.autoPrint) {
       const t = setTimeout(() => window.print(), 150)
       return () => clearTimeout(t)
@@ -508,38 +530,61 @@ function SaleDetailModal({ target, store, onClose }) {
   const handlePrint = () => window.print()
 
   const handleDownloadPdf = async () => {
+    setError('')
     setPdfGenerating(true)
     try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
-      const node = document.getElementById('print-receipt')
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        onclone: (clonedDoc) => {
-          const header = clonedDoc.getElementById('print-only-header')
-          if (header) header.classList.remove('hidden')
+      const totals = [{ label: 'Subtotal', value: formatMoney(sale.subtotal) }]
+      if (sale.discountAmount > 0) {
+        totals.push({ label: 'Discount', value: `-${formatMoney(sale.discountAmount)}`, tone: 'danger' })
+      }
+      totals.push({ label: 'Total', value: formatMoney(sale.totalAmount), emphasize: true })
+      totals.push({ label: 'Paid', value: formatMoney(sale.amountPaid || 0), tone: 'success' })
+      if (sale.remainingDebt > 0) {
+        totals.push({ label: 'Owed', value: formatMoney(sale.remainingDebt), highlight: true })
+      }
 
-          const receipt = clonedDoc.getElementById('print-receipt')
-          if (receipt) {
-            receipt.style.width = '760px'
-            receipt.style.maxHeight = 'none'
-            receipt.style.overflow = 'visible'
-            let ancestor = receipt.parentElement
-            while (ancestor) {
-              ancestor.style.maxHeight = 'none'
-              ancestor.style.height = 'auto'
-              ancestor.style.overflow = 'visible'
-              ancestor = ancestor.parentElement
-            }
-          }
+      await downloadReceiptPdf(
+        {
+          docLabel: 'Sale Receipt',
+          store: { name: store?.storeName, logoUrl: store?.logoUrl },
+          receiptId: sale._id.slice(-6),
+          headerRight: [sale.customerId?.fullName || 'Walk-in customer', formatDateTime(sale.createdAt)],
+          grid: [
+            [
+              { label: 'Date', value: formatDateTime(sale.createdAt) },
+              { label: 'Status', value: status.label, badge: receiptBadge[status.tone] },
+            ],
+            [
+              { label: 'Customer', value: sale.customerId?.fullName || 'Walk-in customer' },
+              { label: 'Sold by', value: sale.staffUserId?.name || '—' },
+            ],
+          ],
+          items: {
+            title: 'Items',
+            rows: sale.items.map((it) => ({
+              name: it.productId?.name || 'Item',
+              meta: `Qty ${it.quantity} · ${formatMoney(it.unitPrice)} each`,
+              amount: formatMoney(it.unitPrice * it.quantity),
+            })),
+          },
+          extraSections:
+            payments.length > 0
+              ? [
+                  {
+                    title: 'Payment history',
+                    rows: payments.map((p) => ({
+                      left: `${formatDateTime(p.date)} · ${p.paymentMethodId?.name || 'Unknown'}${
+                        p.recordedBy?.name ? ` · by ${p.recordedBy.name}` : ''
+                      }`,
+                      right: formatMoney(p.amount),
+                    })),
+                  },
+                ]
+              : [],
+          totals,
         },
-      })
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const imgWidth = pageWidth - 48
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      pdf.addImage(imgData, 'PNG', 24, 24, imgWidth, imgHeight)
-      pdf.save(`sale-${sale._id.slice(-6)}.pdf`)
+        `sale-${sale._id.slice(-6)}.pdf`
+      )
     } catch {
       setError('Failed to generate PDF')
     } finally {
@@ -571,8 +616,13 @@ function SaleDetailModal({ target, store, onClose }) {
       <div className="space-y-5" id="print-receipt">
         <div id="print-only-header" className="hidden items-start justify-between border-b-2 border-ink-800 pb-4 print:flex">
           <div className="flex items-center gap-3">
-            {store?.logoUrl ? (
-              <img src={store.logoUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />
+            {store?.logoUrl && !logoFailed ? (
+              <img
+                src={store.logoUrl}
+                alt=""
+                className="h-12 w-12 rounded-xl object-cover"
+                onError={() => setLogoFailed(true)}
+              />
             ) : (
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600">
                 <span className="font-display text-lg font-extrabold text-white">
@@ -630,22 +680,7 @@ function SaleDetailModal({ target, store, onClose }) {
           </div>
         </div>
 
-        {(sale.paymentSplits || []).length > 0 && (
-          <div className="rounded-xl border border-ink-100 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-            <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Paid via</p>
-            <div className="space-y-2">
-              {sale.paymentSplits.map((p, i) => (
-                <div key={i} className="flex items-center justify-between rounded-lg border border-ink-100 p-2.5 text-sm dark:border-ink-800">
-                  <span className="inline-flex items-center gap-1.5 font-medium text-ink-700 dark:text-ink-200">
-                    <CreditCard size={14} className="text-ink-400" />
-                    {p.paymentMethodId?.name || 'Unknown'}
-                  </span>
-                  <span className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(p.amount)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <SaleHistory payments={payments} />
 
         <div className="rounded-xl border border-ink-100 bg-ink-50/60 p-4 text-sm dark:border-ink-800 dark:bg-ink-800/40">
           <div className="flex items-center justify-between text-ink-500">
@@ -675,5 +710,49 @@ function SaleDetailModal({ target, store, onClose }) {
         </div>
       </div>
     </Modal>
+  )
+}
+
+// Mirrors Rentals' RentalHistory — one small card per payment, showing the
+// amount, method, who collected it, and when. Unlike `paymentSplits` (which
+// only ever reflects what was paid at creation), this covers every
+// SALE_PAYMENT row including later debt settlements.
+function SaleHistory({ payments }) {
+  if (!payments || payments.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-ink-100 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+      <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Payment history</p>
+      <div className="space-y-2">
+        {payments.map((p) => (
+          <div key={p._id} className="flex items-start gap-3 rounded-lg border border-ink-100 p-2.5 dark:border-ink-800">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-success-50 dark:bg-success-500/15">
+              <Banknote size={16} className="text-success-600 dark:text-success-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">Payment received</p>
+                <p className="font-display text-sm font-bold text-success-600 dark:text-success-400">{formatMoney(p.amount)}</p>
+              </div>
+              <p className="mt-0.5 text-xs text-ink-400">
+                {formatDateTime(p.date)}
+                {p.paymentMethodId?.name && (
+                  <>
+                    {' '}
+                    · <span className="font-medium text-ink-500 dark:text-ink-300">{p.paymentMethodId.name}</span>
+                  </>
+                )}
+                {p.recordedBy?.name && (
+                  <>
+                    {' '}
+                    · by <span className="font-medium text-ink-500 dark:text-ink-300">{p.recordedBy.name}</span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

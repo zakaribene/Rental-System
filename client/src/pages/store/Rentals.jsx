@@ -32,12 +32,16 @@ import Modal from '../../components/ui/Modal'
 import Input, { Field, Select } from '../../components/ui/Input'
 import ProductPicker from '../../components/ui/ProductPicker'
 import CustomerPicker from '../../components/ui/CustomerPicker'
+import PaymentMethodPicker from '../../components/ui/PaymentMethodPicker'
 import RowActionsMenu from '../../components/ui/RowActionsMenu'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
 import { formatMoney, formatDateTime } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
+import { downloadReceiptPdf, receiptBadge } from '../../lib/receiptPdf'
+
+const RENTAL_STATUS_TONE = { active: 'success', overdue: 'danger', returned: 'success', cancelled: 'neutral' }
 
 const DURATION_PRESETS = [
   { label: '1 hour', hours: 1 },
@@ -257,6 +261,7 @@ export default function Rentals() {
           setFormTarget(null)
           afterMutate()
         }}
+        onCustomerCreated={(c) => setCustomers((prev) => [...prev, c])}
       />
 
       <RentalDetailModal
@@ -294,10 +299,14 @@ export default function Rentals() {
   )
 }
 
-function RentalFormModal({ open, mode, rental, onClose, customers, products, methods, onSaved }) {
+function RentalFormModal({ open, mode, rental, onClose, customers, products, methods, onSaved, onCustomerCreated }) {
   const [customerId, setCustomerId] = useState('')
   const [items, setItems] = useState([{ productId: '', quantity: 1 }])
   const [expectedReturnDate, setExpectedReturnDate] = useState('')
+  // Frozen "now" the return date was last chosen against — used (instead of
+  // a fresh `new Date()` on every render) so the under-1-day check doesn't
+  // silently drift true just because the form has been open a while.
+  const [rentalStartSnapshot, setRentalStartSnapshot] = useState(() => new Date())
   const [discount, setDiscount] = useState('')
   const [depositType, setDepositType] = useState('NONE')
   const [cashAmount, setCashAmount] = useState('')
@@ -321,9 +330,11 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
   const selectedCustomer = customers.find((c) => c._id === customerId)
 
   const reset = () => {
+    const now = new Date()
     setCustomerId('')
     setItems([{ productId: '', quantity: 1 }])
-    setExpectedReturnDate('')
+    setRentalStartSnapshot(now)
+    setExpectedReturnDate(toDatetimeLocalValue(new Date(now.getTime() + 24 * 60 * 60 * 1000)))
     setDiscount('')
     setDepositType('NONE')
     setCashAmount('')
@@ -435,16 +446,34 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
   }
 
+  // Re-anchors rentalStartSnapshot to "now" whenever the return date is
+  // actually picked/edited, so the under-1-day check reflects the duration
+  // the user chose rather than however long the form happens to sit open.
+  const applyReturnDate = (value) => {
+    setRentalStartSnapshot(new Date())
+    setExpectedReturnDate(value)
+  }
+
   const addItem = () => setItems((prev) => [...prev, { productId: '', quantity: 1 }])
   const removeItem = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx))
 
   const selectedProducts = items
     .map((it) => products.find((p) => p._id === it.productId))
     .filter(Boolean)
-  const rentalDays = daysBetween(mode === 'edit' && rental ? rental.dateOut : new Date(), expectedReturnDate)
+  const rentalStart = mode === 'edit' && rental ? new Date(rental.dateOut) : rentalStartSnapshot
+  const rentalDays = daysBetween(rentalStart, expectedReturnDate)
   const estimatedSubtotal = selectedProducts.reduce((sum, p, i) => sum + p.rentPrice * (Number(items[i]?.quantity) || 1), 0) * rentalDays
   const discountAmount = Math.min(estimatedSubtotal, Number(discount) || 0)
   const estimatedTotal = estimatedSubtotal - discountAmount
+
+  // A duration under 24h still bills a full day server-side (see daysBetween),
+  // so let the user type the exact price they want to charge instead of
+  // fiddling with an equivalent "discount" amount to get there. The 90s
+  // buffer absorbs the seconds the datetime-local input truncates off, so
+  // an untouched "1 day" default doesn't fall just under the 24h line.
+  const durationMs = expectedReturnDate ? new Date(expectedReturnDate).getTime() - rentalStart.getTime() : null
+  const isHourlyDuration = durationMs !== null && durationMs > 0 && durationMs < DAY_MS - 90 * 1000
+  const priceValue = Math.max(0, estimatedSubtotal - (Number(discount) || 0))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -479,7 +508,7 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
         await createRental({
           customerId,
           items: cleanItems,
-          expectedReturnDate: expectedReturnDate || undefined,
+          expectedReturnDate: expectedReturnDate || computeDurationValue(24),
           discount: discount === '' ? undefined : Number(discount),
           deposits: deposits.length ? deposits : undefined,
         })
@@ -518,7 +547,13 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
         {error && <Alert>{error}</Alert>}
 
         <Field label="Customer" required>
-          <CustomerPicker customers={customers} value={customerId} onChange={setCustomerId} />
+          <CustomerPicker
+            customers={customers}
+            value={customerId}
+            onChange={setCustomerId}
+            allowCreate
+            onCreated={onCustomerCreated}
+          />
           {selectedCustomer?.isRisky && (
             <div className="mt-2">
               <Alert tone="warning">
@@ -562,20 +597,36 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           </div>
           {estimatedSubtotal > 0 && (
             <div className="mt-3 flex items-end justify-between gap-3">
-              <Field label="Discount" hint="Optional — flat amount off the total" className="w-40">
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={discount}
-                  onChange={(e) => setDiscount(e.target.value)}
-                />
-              </Field>
+              {isHourlyDuration ? (
+                <Field label="Price" hint="Under 1 day — set the exact price to charge" className="w-40">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={priceValue}
+                    onChange={(e) => {
+                      const newPrice = Number(e.target.value)
+                      if (Number.isNaN(newPrice)) return
+                      setDiscount(String(Math.max(0, estimatedSubtotal - newPrice)))
+                    }}
+                  />
+                </Field>
+              ) : (
+                <Field label="Discount" hint="Optional — flat amount off the total" className="w-40">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                  />
+                </Field>
+              )}
               <div className="pb-1 text-right text-sm font-medium text-ink-600">
                 {discountAmount > 0 && (
                   <p className="text-ink-400">
-                    Subtotal {formatMoney(estimatedSubtotal)} − discount {formatMoney(discountAmount)}
+                    Subtotal {formatMoney(estimatedSubtotal)} − {isHourlyDuration ? 'adjustment' : 'discount'} {formatMoney(discountAmount)}
                   </p>
                 )}
                 <p>
@@ -587,20 +638,20 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           )}
         </div>
 
-        <Field label="Expected return" hint="Optional — pick a quick duration or set an exact date & time">
+        <Field label="Expected return" hint="Defaults to 1 day — pick a different quick duration or set an exact date & time">
           <div className="mb-2 flex flex-wrap gap-1.5">
             {DURATION_PRESETS.map((preset) => (
               <button
                 key={preset.label}
                 type="button"
-                onClick={() => setExpectedReturnDate(computeDurationValue(preset.hours))}
+                onClick={() => applyReturnDate(computeDurationValue(preset.hours))}
                 className="rounded-full border border-ink-200 px-2.5 py-1 text-xs font-medium text-ink-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-primary-500/10"
               >
                 {preset.label}
               </button>
             ))}
           </div>
-          <Input type="datetime-local" value={expectedReturnDate} onChange={(e) => setExpectedReturnDate(e.target.value)} />
+          <Input type="datetime-local" value={expectedReturnDate} onChange={(e) => applyReturnDate(e.target.value)} />
         </Field>
 
         <div>
@@ -647,14 +698,7 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
                 <Input type="number" min="0" step="0.01" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} />
               </Field>
               <Field label="Payment method">
-                <Select value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
-                  <option value="">Select method</option>
-                  {methods.map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </Select>
+                <PaymentMethodPicker methods={methods} value={paymentMethodId} onChange={setPaymentMethodId} />
               </Field>
             </div>
           )}
@@ -779,6 +823,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
   const [depositsToReturn, setDepositsToReturn] = useState({})
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
   const [pdfGenerating, setPdfGenerating] = useState(false)
 
   const returnableDeposits = (detail?.deposits || []).filter(
@@ -796,6 +841,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
       setDamageCosts({})
       setLateFee('')
       setError('')
+      setLogoFailed(false)
       // Default to "yes, hand it back" — that's the common case on a normal return.
       const depositDefaults = {}
       ;(detail.deposits || [])
@@ -861,41 +907,78 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
   const handlePrint = () => window.print()
 
   const handleDownloadPdf = async () => {
+    setError('')
     setPdfGenerating(true)
     try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
-      const node = document.getElementById('print-receipt')
-      const canvas = await html2canvas(node, {
-        scale: 2,
-        onclone: (clonedDoc) => {
-          const header = clonedDoc.getElementById('print-only-header')
-          if (header) header.classList.remove('hidden')
+      const rentalDays = transaction.rentalDays || 1
+      const dayLabel = `${rentalDays} day${rentalDays === 1 ? '' : 's'}`
 
-          // Match the print output: escape the modal card's own
-          // max-h-[90vh]/overflow-y-auto clipping so the full receipt
-          // renders, instead of whatever fit in the on-screen scroll area.
-          const receipt = clonedDoc.getElementById('print-receipt')
-          if (receipt) {
-            receipt.style.width = '760px'
-            receipt.style.maxHeight = 'none'
-            receipt.style.overflow = 'visible'
-            let ancestor = receipt.parentElement
-            while (ancestor) {
-              ancestor.style.maxHeight = 'none'
-              ancestor.style.height = 'auto'
-              ancestor.style.overflow = 'visible'
-              ancestor = ancestor.parentElement
-            }
-          }
-        },
+      const deposits = detail?.deposits || []
+      const cashCollected = deposits.filter((d) => d.depositType === 'CASH').reduce((sum, d) => sum + (d.cashAmount || 0), 0)
+      const nonCashDeposits = deposits.filter((d) => d.depositType !== 'CASH')
+      const depositRows = []
+      if (cashCollected > 0) depositRows.push({ left: 'Deposit received', right: formatMoney(cashCollected) })
+      if (transaction.returnDetails?.depositRefunded > 0) {
+        depositRows.push({ left: 'Deposit refunded', right: formatMoney(transaction.returnDetails.depositRefunded), rightTone: 'success' })
+      }
+      nonCashDeposits.forEach((d) => {
+        const label =
+          d.depositType === 'GOLD'
+            ? `Gold${d.goldDescription ? ` · ${d.goldDescription}` : ''}`
+            : d.depositType === 'DOCUMENT'
+            ? 'Document / ID'
+            : `Guarantor${d.guarantorName ? ` · ${d.guarantorName}` : ''}`
+        depositRows.push({ left: label, right: d.returnedAt ? 'Returned' : 'Held' })
       })
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const imgWidth = pageWidth - 48
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-      pdf.addImage(imgData, 'PNG', 24, 24, imgWidth, imgHeight)
-      pdf.save(`rental-${transaction._id.slice(-6)}.pdf`)
+      if (transaction.returnDetails?.lateFee > 0) {
+        depositRows.push({ left: 'Late fee charged', right: formatMoney(transaction.returnDetails.lateFee), rightTone: 'danger' })
+      }
+
+      await downloadReceiptPdf(
+        {
+          docLabel: 'Rental Receipt',
+          store: { name: store?.storeName, logoUrl: store?.logoUrl },
+          receiptId: transaction._id.slice(-6),
+          headerRight: [transaction.customerId?.fullName || 'Customer', `${transaction.status} · ${formatDateTime(new Date())}`],
+          grid: [
+            [
+              { label: 'Date out', value: formatDateTime(transaction.dateOut) },
+              { label: 'Expected return', value: formatDateTime(transaction.expectedReturnDate) },
+            ],
+            [
+              {
+                label: 'Total rent fee',
+                value: formatMoney(transaction.totalRentFee),
+                sub: transaction.discount > 0 ? `${dayLabel} · ${formatMoney(transaction.discount)} discount applied` : dayLabel,
+                subTone: transaction.discount > 0 ? 'success' : undefined,
+              },
+              { label: 'Status', value: transaction.status, badge: receiptBadge[RENTAL_STATUS_TONE[transaction.status] || 'neutral'] },
+            ],
+            [
+              {
+                label: 'Balance owed',
+                value: formatMoney(transaction.remainingDebt),
+                tone: transaction.remainingDebt > 0 ? 'danger' : undefined,
+              },
+              { label: 'Handled by', value: transaction.staffUserId?.name || '—' },
+            ],
+          ],
+          items: {
+            title: 'Items',
+            rows: transaction.items.map((it) => {
+              const product = it.productId
+              return {
+                name: product?.name || 'Item',
+                meta: `Qty ${it.quantity} · ${formatMoney(it.unitRent)}/day · ${dayLabel}`,
+                amount: formatMoney(it.unitRent * it.quantity * rentalDays),
+              }
+            }),
+          },
+          extraSections: depositRows.length ? [{ title: 'Deposit', rows: depositRows }] : [],
+          totals: [],
+        },
+        `rental-${transaction._id.slice(-6)}.pdf`
+      )
     } catch {
       setError('Failed to generate PDF')
     } finally {
@@ -943,8 +1026,13 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
         <div className="space-y-5" id="print-receipt">
           <div id="print-only-header" className="hidden items-start justify-between border-b-2 border-ink-800 pb-4 print:flex">
             <div className="flex items-center gap-3">
-              {store?.logoUrl ? (
-                <img src={store.logoUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />
+              {store?.logoUrl && !logoFailed ? (
+                <img
+                  src={store.logoUrl}
+                  alt=""
+                  className="h-12 w-12 rounded-xl object-cover"
+                  onError={() => setLogoFailed(true)}
+                />
               ) : (
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600">
                   <span className="font-display text-lg font-extrabold text-white">
@@ -1084,14 +1172,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
               )}
 
               <Field label="Refund payment method" hint="Used only if a deposit refund is due">
-                <Select value={refundMethodId} onChange={(e) => setRefundMethodId(e.target.value)}>
-                  <option value="">Select method</option>
-                  {methods.map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </Select>
+                <PaymentMethodPicker methods={methods} value={refundMethodId} onChange={setRefundMethodId} allowNone />
               </Field>
 
               {isOverdue && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { BarChart3, Calendar, Filter, Wallet, Search, FileSpreadsheet, FileDown, ShoppingBag, Tag, Package, Users2, AlertCircle } from 'lucide-react'
 import { getDailyTotals, getSummary, getSalesReport } from '../../api/reports'
@@ -17,7 +17,7 @@ import Button from '../../components/ui/Button'
 import Input, { Field, Select } from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner } from '../../components/ui/Misc'
-import { formatMoney, formatDateTime, paymentSplitsLabel } from '../../lib/utils'
+import { formatMoney, formatDateTime, paymentSplitsLabel, cn } from '../../lib/utils'
 import StatCard from '../../components/ui/StatCard'
 import { exportPaymentsToExcel, exportPaymentsToPdf, exportSalesToExcel, exportSalesToPdf } from '../../lib/reportExport'
 import { getMethodVisual } from '../../lib/paymentMethodVisuals'
@@ -47,6 +47,7 @@ export default function Reports() {
   const [exporting, setExporting] = useState('')
   const [salesReport, setSalesReport] = useState(null)
   const [salesRows, setSalesRows] = useState([])
+  const [salesPaymentRows, setSalesPaymentRows] = useState([])
   const [salesLoading, setSalesLoading] = useState(true)
   const [salesExporting, setSalesExporting] = useState('')
   const [debtRecords, setDebtRecords] = useState([])
@@ -73,10 +74,11 @@ export default function Reports() {
     const params = {}
     if (from) params.from = from
     if (to) params.to = to
-    Promise.all([getSalesReport(params), listSales(params)])
-      .then(([report, sales]) => {
+    Promise.all([getSalesReport(params), listSales(params), listPayments(params)])
+      .then(([report, sales, payments]) => {
         setSalesReport(report)
         setSalesRows(sales)
+        setSalesPaymentRows(payments)
       })
       .finally(() => setSalesLoading(false))
   }, [store?.salesEnabled, from, to])
@@ -134,6 +136,27 @@ export default function Reports() {
     pageSize: debtPageSize,
   } = usePagination(filteredDebts, 10)
   const totalOwed = filteredDebts.reduce((sum, d) => sum + d.remainingDebt, 0)
+
+  // A sale's own `paymentSplits` only ever reflects what was paid at
+  // creation — a later debt settlement (Payments page) tops up
+  // `amountPaid` without touching that array. The Payment collection is
+  // the only place both the initial and later SALE_PAYMENT rows live, so
+  // that's the source of truth for "how much did each method actually
+  // collect for sales" here.
+  const salesByMethod = useMemo(() => {
+    const map = new Map()
+    salesPaymentRows
+      .filter((p) => p.type === 'SALE_PAYMENT')
+      .forEach((p) => {
+        const id = p.paymentMethodId?._id || p.paymentMethodId
+        if (!id) return
+        const name = p.paymentMethodId?.name || methods.find((m) => m._id === id)?.name || 'Unknown'
+        const existing = map.get(id) || { id, name, total: 0 }
+        existing.total += p.amount || 0
+        map.set(id, existing)
+      })
+    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+  }, [salesPaymentRows, methods])
 
   const currentBalance = visiblePayments.reduce((sum, p) => {
     if (p.type === 'REFUND') return sum - p.amount
@@ -429,18 +452,36 @@ export default function Reports() {
 
                 <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
                   <div>
-                    <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Top selling products</p>
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-ink-700 dark:text-ink-200">Top selling products</p>
+                      {salesReport?.topProducts?.length > 0 && <span className="text-xs font-medium text-ink-400">Top 3</span>}
+                    </div>
                     {!salesReport?.topProducts?.length ? (
                       <EmptyState icon={Package} title="No sales yet" />
                     ) : (
                       <div className="space-y-2">
-                        {salesReport.topProducts.map((p) => (
-                          <div key={p._id} className="flex items-center justify-between rounded-lg border border-ink-100 p-3 dark:border-ink-800">
-                            <div>
-                              <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">{p.name || 'Deleted product'}</p>
+                        {salesReport.topProducts.slice(0, 3).map((p, i) => (
+                          <div
+                            key={p._id}
+                            className="flex items-center gap-3 rounded-xl border border-ink-100 p-3 dark:border-ink-800"
+                          >
+                            <div
+                              className={cn(
+                                'flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-extrabold',
+                                i === 0
+                                  ? 'bg-primary-600 text-white'
+                                  : i === 1
+                                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
+                                  : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                              )}
+                            >
+                              {i + 1}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-ink-800 dark:text-ink-100">{p.name || 'Deleted product'}</p>
                               <p className="text-xs text-ink-400">{p.unitsSold} unit(s) sold</p>
                             </div>
-                            <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(p.revenue)}</p>
+                            <p className="shrink-0 font-semibold text-ink-800 dark:text-ink-100">{formatMoney(p.revenue)}</p>
                           </div>
                         ))}
                       </div>
@@ -462,6 +503,36 @@ export default function Reports() {
                             <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(s.revenue)}</p>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {salesByMethod.length > 0 && (
+                      <div className="mt-5">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
+                          Sales collected · by payment method
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {salesByMethod.map((m) => {
+                            const visual = getMethodVisual(m.name)
+                            const Icon = visual.icon
+                            return (
+                              <div
+                                key={m.id}
+                                className="flex items-center gap-2 rounded-lg border border-ink-100 p-2 transition-colors hover:border-primary-200 dark:border-ink-800 dark:hover:border-primary-500/30"
+                              >
+                                <div
+                                  className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md ring-2', visual.bg, visual.ring)}
+                                >
+                                  <Icon size={13} className={visual.text} strokeWidth={2.25} />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-[11px] font-medium leading-tight text-ink-500 dark:text-ink-400">{m.name}</p>
+                                  <p className="truncate text-sm font-bold leading-tight text-ink-900 dark:text-white">{formatMoney(m.total)}</p>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>

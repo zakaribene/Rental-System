@@ -264,7 +264,14 @@ const getSaleById = async (req, res, next) => {
   try {
     const sale = await SaleTransaction.findOne({ _id: req.params.id, storeId: req.storeId }).populate(SALE_POPULATE);
     if (!sale) return res.status(404).json({ message: "Sale not found" });
-    res.json(sale);
+    // Every payment ever collected toward this sale — the initial split(s)
+    // recorded at creation plus any later debt settlements — so the
+    // receipt can show who collected what, via which method, and when.
+    const payments = await Payment.find({ saleId: sale._id, storeId: req.storeId })
+      .populate("paymentMethodId", "name")
+      .populate("recordedBy", "name")
+      .sort({ date: 1 });
+    res.json({ sale, payments });
   } catch (err) {
     next(err);
   }
