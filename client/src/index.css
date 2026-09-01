@@ -72,6 +72,14 @@ body {
 }
 
 @media print {
+  /* `visibility: hidden` (below) hides pixels but still reserves layout
+     space. The whole app tree in #root sits in `body` right before the
+     modal's portal, so left only `visibility`-hidden it printed as a tall
+     blank leading page before the receipt ever showed up. Removing its box
+     entirely is what actually gets the receipt to start on page 1. */
+  #root {
+    display: none !important;
+  }
   body * {
     visibility: hidden;
   }
@@ -79,19 +87,14 @@ body {
   #print-receipt * {
     visibility: visible;
   }
-  /* `fixed` (not `absolute`) so it escapes the modal card's own positioning
-     context and its `max-h-[90vh] overflow-y-auto` clipping entirely —
-     otherwise it prints positioned inside the (still invisible-but-laid-out)
-     modal card and gets cut off after one viewport's worth of content. */
+  /* The modal's own chrome (backdrop, title bar, footer) is hidden and its
+     card's `max-h-[90vh] overflow-y-auto` clipping is lifted via `print:`
+     variants in Modal.jsx, so the receipt stays in normal document flow and
+     can paginate naturally. It must NOT use `position: fixed` here — a fixed
+     element gets reprinted on every page once content spans more than one
+     sheet, which is what produced duplicate pages before. */
   #print-receipt {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
     width: auto !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
     margin: 0 !important;
     padding: 24px !important;
   }

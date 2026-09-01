@@ -20,6 +20,7 @@ const PERMISSION_MODULES = [
   { key: 'customers', label: 'Customers', edit: true, delete: false },
   { key: 'rentals', label: 'Rentals', edit: true, delete: true },
   { key: 'sales', label: 'Sales', edit: true, delete: false },
+  { key: 'expenses', label: 'Expenses', edit: false, delete: true },
   { key: 'payments', label: 'Payments', edit: false, delete: false },
   { key: 'reports', label: 'Reports', edit: false, delete: false },
   { key: 'activityLog', label: 'Activity Log', edit: false, delete: false },

@@ -20,6 +20,15 @@ const SALES_COLUMNS = [
   { header: 'Date', key: 'date', width: 20 },
 ]
 
+const EXPENSE_COLUMNS = [
+  { header: 'Date', key: 'date', width: 20 },
+  { header: 'Description', key: 'description', width: 30 },
+  { header: 'Category', key: 'category', width: 18 },
+  { header: 'Method', key: 'method', width: 16 },
+  { header: 'Amount', key: 'amount', width: 12 },
+  { header: 'Recorded by', key: 'staff', width: 16 },
+]
+
 const ACTIVITY_LOG_COLUMNS = [
   { header: 'Store', key: 'store', width: 20 },
   { header: 'Date', key: 'date', width: 20 },
@@ -157,6 +166,12 @@ export const exportSalesToExcel = (rows, store) =>
 
 export const exportSalesToPdf = (rows, store) =>
   exportToPdf({ rows, store, columns: SALES_COLUMNS, title: 'Sales report', filenamePrefix: 'sales' })
+
+export const exportExpensesToExcel = (rows, store) =>
+  exportToExcel({ rows, store, columns: EXPENSE_COLUMNS, sheetName: 'Expenses', title: 'Expenses report', filenamePrefix: 'expenses' })
+
+export const exportExpensesToPdf = (rows, store) =>
+  exportToPdf({ rows, store, columns: EXPENSE_COLUMNS, title: 'Expenses report', filenamePrefix: 'expenses' })
 
 export const exportActivityLogToExcel = (rows, store) =>
   exportToExcel({ rows, store, columns: ACTIVITY_LOG_COLUMNS, sheetName: 'Activity Log', title: 'Activity log', filenamePrefix: 'activity-log' })

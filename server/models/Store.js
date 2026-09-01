@@ -7,6 +7,7 @@ const storeSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
   status: { type: String, enum: ["active", "inactive"], default: "active" },
   salesEnabled: { type: Boolean, default: false },
+  expensesEnabled: { type: Boolean, default: false },
   logoUrl: { type: String },
   notificationsLastReadAt: { type: Date, default: () => new Date(0) },
   supportStoreLastReadAt: { type: Date, default: () => new Date(0) },

@@ -15,6 +15,7 @@ import Products from './pages/store/Products'
 import Customers from './pages/store/Customers'
 import Rentals from './pages/store/Rentals'
 import Sales from './pages/store/Sales'
+import Expenses from './pages/store/Expenses'
 import Payments from './pages/store/Payments'
 import Reports from './pages/store/Reports'
 import ActivityLog from './pages/store/ActivityLog'
@@ -60,6 +61,7 @@ export default function App() {
                   <Route path="/store/customers" element={<Customers />} handle={{ title: 'Customers' }} />
                   <Route path="/store/rentals" element={<Rentals />} handle={{ title: 'Rentals' }} />
                   <Route path="/store/sales" element={<Sales />} handle={{ title: 'Sales' }} />
+                  <Route path="/store/expenses" element={<Expenses />} handle={{ title: 'Expenses' }} />
                   <Route path="/store/payments" element={<Payments />} handle={{ title: 'Payments' }} />
                   <Route path="/store/reports" element={<Reports />} handle={{ title: 'Reports' }} />
                   <Route path="/store/activity-log" element={<ActivityLog />} handle={{ title: 'Activity Log' }} />

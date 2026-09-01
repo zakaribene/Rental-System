@@ -1,5 +1,5 @@
 const express = require("express");
-const { dailyTotals, summary, analytics, salesReport } = require("../controllers/reportController");
+const { dailyTotals, summary, analytics, salesReport, expenseReport } = require("../controllers/reportController");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
@@ -86,5 +86,24 @@ router.get("/analytics", analytics);
  *       403: { description: Sales feature disabled for this store }
  */
 router.get("/sales", requireStoreFeature("salesEnabled"), salesReport);
+
+/**
+ * @swagger
+ * /reports/expenses:
+ *   get:
+ *     tags: [Reports]
+ *     summary: Get total spent, broken down by category and by payment method
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200: { description: Expense report }
+ *       403: { description: Expenses feature disabled for this store }
+ */
+router.get("/expenses", requireStoreFeature("expensesEnabled"), expenseReport);
 
 module.exports = router;

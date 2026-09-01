@@ -20,18 +20,19 @@ export default function Modal({ open, onClose, title, subtitle, children, footer
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:static print:block print:h-auto print:p-0">
       <div
-        className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm animate-fadeIn"
+        className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm animate-fadeIn print:hidden"
         onClick={onClose}
       />
       <div
         className={cn(
           'relative z-10 w-full rounded-xl2 bg-white shadow-2xl animate-fadeIn max-h-[90vh] overflow-y-auto dark:bg-ink-900',
+          'print:static print:max-h-none print:w-auto print:overflow-visible print:rounded-none print:shadow-none',
           sizes[size]
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-ink-100 px-6 py-4 dark:border-ink-800">
+        <div className="flex items-start justify-between gap-4 border-b border-ink-100 px-6 py-4 dark:border-ink-800 print:hidden">
           <div>
             <h3 className="font-display text-lg font-bold text-ink-900 dark:text-white">{title}</h3>
             {subtitle && <p className="mt-0.5 text-sm text-ink-500 dark:text-ink-400">{subtitle}</p>}
@@ -43,8 +44,10 @@ export default function Modal({ open, onClose, title, subtitle, children, footer
             <X size={18} />
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-ink-100 px-6 py-4 dark:border-ink-800">{footer}</div>}
+        <div className="px-6 py-5 print:p-0">{children}</div>
+        {footer && (
+          <div className="flex justify-end gap-2 border-t border-ink-100 px-6 py-4 dark:border-ink-800 print:hidden">{footer}</div>
+        )}
       </div>
     </div>,
     document.body

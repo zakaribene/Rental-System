@@ -230,7 +230,7 @@ async function buildReceiptPdf(spec) {
       pdf.setFontSize(9)
       setText(pdf, INK700)
       pdf.text(row.left, margin + 24, rowY + 14.5)
-      setText(pdf, row.rightTone === 'success' ? SUCCESS600 : INK800)
+      setText(pdf, row.rightTone === 'success' ? SUCCESS600 : row.rightTone === 'danger' ? DANGER600 : INK800)
       pdf.text(row.right, margin + contentWidth - 24, rowY + 14.5, { align: 'right' })
       rowY += rowH
     }

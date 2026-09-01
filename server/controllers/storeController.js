@@ -77,7 +77,7 @@ const getStoreById = async (req, res, next) => {
 
 const updateStore = async (req, res, next) => {
   try {
-    const { storeName, ownerName, status, salesEnabled } = req.body;
+    const { storeName, ownerName, status, salesEnabled, expensesEnabled } = req.body;
     const store = await Store.findByIdAndUpdate(
       req.params.id,
       {
@@ -85,7 +85,8 @@ const updateStore = async (req, res, next) => {
           ...(storeName && { storeName }),
           ...(ownerName && { ownerName }),
           ...(status && { status }),
-          ...(salesEnabled !== undefined && { salesEnabled })
+          ...(salesEnabled !== undefined && { salesEnabled }),
+          ...(expensesEnabled !== undefined && { expensesEnabled })
         }
       },
       { new: true }

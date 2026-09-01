@@ -913,25 +913,28 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
       const rentalDays = transaction.rentalDays || 1
       const dayLabel = `${rentalDays} day${rentalDays === 1 ? '' : 's'}`
 
-      const deposits = detail?.deposits || []
-      const cashCollected = deposits.filter((d) => d.depositType === 'CASH').reduce((sum, d) => sum + (d.cashAmount || 0), 0)
-      const nonCashDeposits = deposits.filter((d) => d.depositType !== 'CASH')
-      const depositRows = []
-      if (cashCollected > 0) depositRows.push({ left: 'Deposit received', right: formatMoney(cashCollected) })
-      if (transaction.returnDetails?.depositRefunded > 0) {
-        depositRows.push({ left: 'Deposit refunded', right: formatMoney(transaction.returnDetails.depositRefunded), rightTone: 'success' })
-      }
-      nonCashDeposits.forEach((d) => {
-        const label =
-          d.depositType === 'GOLD'
-            ? `Gold${d.goldDescription ? ` · ${d.goldDescription}` : ''}`
-            : d.depositType === 'DOCUMENT'
-            ? 'Document / ID'
-            : `Guarantor${d.guarantorName ? ` · ${d.guarantorName}` : ''}`
-        depositRows.push({ left: label, right: d.returnedAt ? 'Returned' : 'Held' })
+      // Same event list the on-screen/print History card renders, so the PDF
+      // never drops the rent-payment/deposit/late-fee timeline it used to be
+      // missing.
+      // Notes are left off here (unlike the on-screen card) — they're often a
+      // full sentence and this is a single non-wrapping PDF line.
+      const historyRows = getRentalHistoryEvents(detail?.payments, detail?.deposits, transaction.returnDetails).map((ev) => {
+        const metaParts = [ev.methodName, ev.staffName && `by ${ev.staffName}`].filter(Boolean)
+        return {
+          left: [`${formatDateTime(ev.date)} · ${ev.label}`, ...metaParts].join(' · '),
+          right: ev.amount != null ? formatMoney(ev.amount) : '—',
+          rightTone: ev.tone?.includes('success') ? 'success' : ev.tone?.includes('danger') ? 'danger' : undefined,
+        }
       })
-      if (transaction.returnDetails?.lateFee > 0) {
-        depositRows.push({ left: 'Late fee charged', right: formatMoney(transaction.returnDetails.lateFee), rightTone: 'danger' })
+
+      const totals = [{ label: 'Subtotal', value: formatMoney(transaction.totalRentFee + (transaction.discount || 0)) }]
+      if (transaction.discount > 0) {
+        totals.push({ label: 'Discount', value: `-${formatMoney(transaction.discount)}`, tone: 'danger' })
+      }
+      totals.push({ label: 'Total', value: formatMoney(transaction.totalRentFee), emphasize: true })
+      totals.push({ label: 'Paid', value: formatMoney(transaction.rentPaid || 0), tone: 'success' })
+      if (transaction.remainingDebt > 0) {
+        totals.push({ label: 'Owed', value: formatMoney(transaction.remainingDebt), highlight: true })
       }
 
       await downloadReceiptPdf(
@@ -974,8 +977,8 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
               }
             }),
           },
-          extraSections: depositRows.length ? [{ title: 'Deposit', rows: depositRows }] : [],
-          totals: [],
+          extraSections: historyRows.length ? [{ title: 'History', rows: historyRows }] : [],
+          totals,
         },
         `rental-${transaction._id.slice(-6)}.pdf`
       )
@@ -1091,12 +1094,45 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
 
           <RentedItems transaction={transaction} />
 
-          <DepositTicker deposits={detail.deposits} returnDetails={transaction.returnDetails} payments={detail.payments} />
+          {/* Screen-only: the PDF and the print output both stop at History, so this
+              on-screen-only ticker is kept out of print to match the PDF exactly. */}
+          <div className="print:hidden">
+            <DepositTicker deposits={detail.deposits} returnDetails={transaction.returnDetails} payments={detail.payments} />
+          </div>
 
           <RentalHistory payments={detail.payments} deposits={detail.deposits} returnDetails={transaction.returnDetails} />
 
+          <div className="rounded-xl border border-ink-100 bg-ink-50/60 p-4 text-sm dark:border-ink-800 dark:bg-ink-800/40">
+            <div className="flex items-center justify-between text-ink-500">
+              <span>Subtotal</span>
+              <span>{formatMoney(transaction.totalRentFee + (transaction.discount || 0))}</span>
+            </div>
+            {transaction.discount > 0 && (
+              <div className="flex items-center justify-between text-danger-600">
+                <span>Discount</span>
+                <span>-{formatMoney(transaction.discount)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-ink-100 pt-1.5 font-semibold text-ink-800 dark:border-ink-700 dark:text-ink-100">
+              <span>Total</span>
+              <span className="font-display text-base text-primary-700 dark:text-primary-400">{formatMoney(transaction.totalRentFee)}</span>
+            </div>
+            <div className="flex items-center justify-between text-success-600">
+              <span>Paid</span>
+              <span>{formatMoney(transaction.rentPaid || 0)}</span>
+            </div>
+            {transaction.remainingDebt > 0 && (
+              <div className="mt-1 flex items-center justify-between rounded-lg bg-danger-50 px-2.5 py-1.5 font-semibold text-danger-600 dark:bg-danger-500/10">
+                <span>Owed</span>
+                <span>{formatMoney(transaction.remainingDebt)}</span>
+              </div>
+            )}
+          </div>
+
           {canReturn ? (
-            <form id="return-form" onSubmit={handleReturn} className="space-y-4">
+            // Staff-only return processing — not receipt content, so it's excluded from
+            // print (and was never part of the PDF) to keep both outputs identical.
+            <form id="return-form" onSubmit={handleReturn} className="space-y-4 print:hidden">
               {error && <Alert>{error}</Alert>}
               {isOverdue && (
                 <Alert tone="warning">This rental is overdue. You may optionally charge a late fee below, or leave it at 0 to waive it.</Alert>
@@ -1183,7 +1219,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
             </form>
           ) : (
             transaction.returnDetails && (
-              <div className="grid grid-cols-2 gap-4 rounded-lg bg-ink-50 p-4 text-sm dark:bg-ink-800/60">
+              <div className="grid grid-cols-2 gap-4 rounded-lg bg-ink-50 p-4 text-sm dark:bg-ink-800/60 print:hidden">
                 <div>
                   <p className="text-ink-400">Deposit refunded</p>
                   <p className="font-semibold text-ink-800 dark:text-ink-100">{formatMoney(transaction.returnDetails.depositRefunded)}</p>
@@ -1348,9 +1384,11 @@ const historyEventStyle = {
   DEBT_SETTLEMENT: { icon: Banknote, tone: 'text-primary-600', bg: 'bg-primary-50', label: 'Rent payment' },
 }
 
-function RentalHistory({ payments, deposits, returnDetails }) {
+// Shared by the on-screen/print History card and the downloaded PDF so both
+// surfaces show the exact same timeline instead of drifting apart.
+function getRentalHistoryEvents(payments, deposits, returnDetails) {
   const nonCashDeposits = (deposits || []).filter((d) => d.depositType !== 'CASH')
-  const events = [
+  return [
     ...(payments || []).map((p) => ({
       key: p._id,
       date: p.date,
@@ -1402,6 +1440,10 @@ function RentalHistory({ payments, deposits, returnDetails }) {
         ]
       : []),
   ].sort((a, b) => new Date(a.date) - new Date(b.date))
+}
+
+function RentalHistory({ payments, deposits, returnDetails }) {
+  const events = getRentalHistoryEvents(payments, deposits, returnDetails)
 
   if (events.length === 0) return null
 

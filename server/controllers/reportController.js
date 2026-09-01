@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Payment = require("../models/Payment");
 const RentalTransaction = require("../models/RentalTransaction");
 const SaleTransaction = require("../models/SaleTransaction");
+const Expense = require("../models/Expense");
 
 const dailyTotals = async (req, res, next) => {
   try {
@@ -62,7 +63,25 @@ const summary = async (req, res, next) => {
       { $group: { _id: "$paymentMethodId", total: { $sum: "$signedAmount" }, count: { $sum: 1 } } }
     ]);
 
-    res.json(results);
+    // Expenses aren't tied to a customer/product, so only date range and
+    // method narrow them — netted in here so "balance" reflects money still
+    // actually on hand, the same number an expense gets blocked against.
+    const expenseMatch = { storeId };
+    if (match.date) expenseMatch.date = match.date;
+    if (match.paymentMethodId) expenseMatch.paymentMethodId = match.paymentMethodId;
+    const expenseTotals = await Expense.aggregate([
+      { $match: expenseMatch },
+      { $group: { _id: "$paymentMethodId", total: { $sum: "$amount" } } }
+    ]);
+    const expenseMap = new Map(expenseTotals.map((e) => [e._id.toString(), e.total]));
+
+    const merged = results.map((r) => ({ ...r, total: r.total - (expenseMap.get(r._id?.toString()) || 0) }));
+    for (const [methodId, total] of expenseMap) {
+      if (merged.some((r) => r._id?.toString() === methodId)) continue;
+      merged.push({ _id: new mongoose.Types.ObjectId(methodId), total: -total, count: 0 });
+    }
+
+    res.json(merged);
   } catch (err) {
     next(err);
   }
@@ -198,4 +217,48 @@ const salesReport = async (req, res, next) => {
   }
 };
 
-module.exports = { dailyTotals, summary, analytics, salesReport };
+const expenseReport = async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    const storeId = new mongoose.Types.ObjectId(req.storeId);
+
+    const match = { storeId };
+    if (from || to) {
+      match.date = {};
+      if (from) match.date.$gte = new Date(from);
+      if (to) match.date.$lte = new Date(to);
+    }
+
+    const totals = await Expense.aggregate([
+      { $match: match },
+      { $group: { _id: null, totalSpent: { $sum: "$amount" }, totalCount: { $sum: 1 } } }
+    ]);
+
+    const byCategory = await Expense.aggregate([
+      { $match: match },
+      { $group: { _id: { $ifNull: ["$category", "Uncategorized"] }, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+      { $project: { _id: 1, total: 1, count: 1, name: "$_id" } }
+    ]);
+
+    const byMethod = await Expense.aggregate([
+      { $match: match },
+      { $group: { _id: "$paymentMethodId", total: { $sum: "$amount" }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+      { $lookup: { from: "paymentmethods", localField: "_id", foreignField: "_id", as: "method" } },
+      { $unwind: { path: "$method", preserveNullAndEmptyArrays: true } },
+      { $project: { _id: 1, total: 1, count: 1, name: { $ifNull: ["$method.name", "Unknown"] } } }
+    ]);
+
+    res.json({
+      totalSpent: totals[0]?.totalSpent || 0,
+      totalCount: totals[0]?.totalCount || 0,
+      byCategory,
+      byMethod
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { dailyTotals, summary, analytics, salesReport, expenseReport };

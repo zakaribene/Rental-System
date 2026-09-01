@@ -28,6 +28,7 @@ const options = {
       { name: "Payment Methods" },
       { name: "Payments" },
       { name: "Rentals" },
+      { name: "Expenses" },
       { name: "Reports" }
     ]
   },

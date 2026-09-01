@@ -7,6 +7,7 @@ import {
   Users,
   ClipboardList,
   ShoppingBag,
+  Receipt,
   Wallet,
   BarChart3,
   UserCog,
@@ -40,6 +41,7 @@ const storeNav = [
   { to: '/store/rentals', label: 'Rentals', icon: ClipboardList, module: 'rentals' },
   { to: '/store/payments', label: 'Payments', icon: Wallet, module: 'payments' },
   { to: '/store/sales', label: 'Sales', icon: ShoppingBag, module: 'sales', requiresSalesEnabled: true },
+  { to: '/store/expenses', label: 'Expenses', icon: Receipt, module: 'expenses', requiresExpensesEnabled: true },
   { to: '/store/reports', label: 'Reports', icon: BarChart3, module: 'reports' },
   { to: '/store/users', label: 'Staff', icon: UserCog, ownerOnly: true },
   { to: '/store/activity-log', label: 'Activity Log', icon: History, module: 'activityLog' },
@@ -53,9 +55,11 @@ export default function Sidebar({ open = false, onClose }) {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
   const showUsers = user?.role === 'STORE_OWNER'
   const [salesEnabled, setSalesEnabled] = useState(false)
+  const [expensesEnabled, setExpensesEnabled] = useState(false)
   const nav = (isSuperAdmin ? superAdminNav : storeNav).filter((item) => {
     if (item.module && !can(item.module)) return false
     if (item.requiresSalesEnabled && !salesEnabled) return false
+    if (item.requiresExpensesEnabled && !expensesEnabled) return false
     if (item.ownerOnly && !showUsers) return false
     return true
   })
@@ -63,8 +67,14 @@ export default function Sidebar({ open = false, onClose }) {
   useEffect(() => {
     if (isSuperAdmin) return
     getMyStore()
-      .then((store) => setSalesEnabled(!!store.salesEnabled))
-      .catch(() => setSalesEnabled(false))
+      .then((store) => {
+        setSalesEnabled(!!store.salesEnabled)
+        setExpensesEnabled(!!store.expensesEnabled)
+      })
+      .catch(() => {
+        setSalesEnabled(false)
+        setExpensesEnabled(false)
+      })
   }, [isSuperAdmin])
 
   return (

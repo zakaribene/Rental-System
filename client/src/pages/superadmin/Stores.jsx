@@ -13,6 +13,7 @@ import {
   Pencil,
   Power,
   ShoppingBag,
+  Receipt,
 } from 'lucide-react'
 import { listStores, createStore, updateStore, resetStorePassword, impersonateStore } from '../../api/stores'
 import Card from '../../components/ui/Card'
@@ -123,6 +124,11 @@ export default function Stores() {
     load()
   }
 
+  const toggleExpensesFeature = async (store) => {
+    await updateStore(store._id, { expensesEnabled: !store.expensesEnabled })
+    load()
+  }
+
   return (
     <div className="animate-fadeIn">
       <PageHeader
@@ -197,6 +203,13 @@ export default function Stores() {
                   ),
                 },
                 {
+                  key: 'expenses',
+                  header: 'Expenses',
+                  render: (row) => (
+                    <Badge tone={row.expensesEnabled ? 'success' : 'neutral'}>{row.expensesEnabled ? 'Enabled' : 'Disabled'}</Badge>
+                  ),
+                },
+                {
                   key: 'subscription',
                   header: 'Subscription',
                   render: (row) => (
@@ -251,6 +264,12 @@ export default function Stores() {
                           label: row.salesEnabled ? 'Disable Sales' : 'Enable Sales',
                           icon: ShoppingBag,
                           onClick: () => toggleSalesFeature(row),
+                        },
+                        {
+                          key: 'expenses',
+                          label: row.expensesEnabled ? 'Disable Expenses' : 'Enable Expenses',
+                          icon: Receipt,
+                          onClick: () => toggleExpensesFeature(row),
                         },
                         {
                           key: 'status',
