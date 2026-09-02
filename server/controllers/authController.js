@@ -117,7 +117,10 @@ const logout = async (req, res, next) => {
   try {
     const token = req.cookies?.refreshToken;
     if (token) {
-      await User.findOneAndUpdate({ refreshToken: token }, { refreshToken: null });
+      // Stamp "last seen" at the moment of logout so the admin's Stores list
+      // shows an accurate "Xm ago" straight away instead of a stale time (or
+      // lingering "Online" — see storeController's isOnline check).
+      await User.findOneAndUpdate({ refreshToken: token }, { refreshToken: null, lastActiveAt: new Date() });
     }
     res.clearCookie("refreshToken", refreshCookieOptions);
     res.json({ message: "Logged out" });

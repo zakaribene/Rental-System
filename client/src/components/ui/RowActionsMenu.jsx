@@ -24,7 +24,25 @@ export default function RowActionsMenu({ items, loading = false }) {
 
     const updateCoords = () => {
       const rect = buttonRef.current?.getBoundingClientRect()
-      if (rect) setCoords({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
+      if (!rect) return
+
+      // Estimate the menu's height from its rows so we can decide whether it
+      // fits below the trigger. For a row near the bottom of the viewport
+      // (e.g. the last table row) there's nowhere to scroll to reach a menu
+      // that opens downward, so flip it above the trigger instead.
+      const dividerCount = items.filter((it) => it.divider).length
+      const estimatedHeight = items.length * 44 + 16 + dividerCount * 13
+      const margin = 8
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const openUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow
+      const right = window.innerWidth - rect.right
+
+      if (openUp) {
+        setCoords({ bottom: window.innerHeight - rect.top + 6, right, maxHeight: Math.max(spaceAbove, 140) })
+      } else {
+        setCoords({ top: rect.bottom + 6, right, maxHeight: Math.max(spaceBelow, 140) })
+      }
     }
     updateCoords()
 
@@ -44,7 +62,7 @@ export default function RowActionsMenu({ items, loading = false }) {
       window.removeEventListener('scroll', updateCoords, true)
       window.removeEventListener('resize', updateCoords)
     }
-  }, [open])
+  }, [open, items])
 
   const run = (fn) => {
     setOpen(false)
@@ -67,8 +85,14 @@ export default function RowActionsMenu({ items, loading = false }) {
         createPortal(
           <div
             ref={menuRef}
-            style={{ position: 'fixed', top: coords.top, right: coords.right }}
-            className="z-50 w-56 overflow-hidden rounded-xl border border-ink-100 bg-white py-1.5 text-left shadow-card animate-fadeIn dark:border-ink-800 dark:bg-ink-900"
+            style={{
+              position: 'fixed',
+              right: coords.right,
+              ...(coords.top != null ? { top: coords.top } : { bottom: coords.bottom }),
+              maxHeight: coords.maxHeight,
+              overflowY: 'auto',
+            }}
+            className="z-50 w-56 overflow-x-hidden rounded-xl border border-ink-100 bg-white py-1.5 text-left shadow-card animate-fadeIn dark:border-ink-800 dark:bg-ink-900"
           >
             {items.map((item, i) => (
               <Fragment key={item.key || i}>

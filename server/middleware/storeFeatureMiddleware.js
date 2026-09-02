@@ -3,7 +3,8 @@
 // on Store, so this middleware never runs for SUPER_ADMIN requests.
 const FEATURE_LABELS = {
   salesEnabled: "Sales",
-  expensesEnabled: "Expenses"
+  expensesEnabled: "Expenses",
+  transfersEnabled: "Transfer Payments"
 };
 
 const requireStoreFeature = (flag) => (req, res, next) => {

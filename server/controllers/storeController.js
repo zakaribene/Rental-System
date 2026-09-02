@@ -6,9 +6,11 @@ const RentalTransaction = require("../models/RentalTransaction");
 const ImpersonationLog = require("../models/ImpersonationLog");
 const { generateAccessToken } = require("../utils/tokenUtils");
 
-// A store owner is considered "online" if their last authenticated request
-// was within this window (matches the touch interval in authMiddleware).
-const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+// A store owner is considered "online" only if they still hold a live session
+// (refresh token not cleared by logout) AND their last authenticated request
+// was within this window. Comfortably above authMiddleware's touch interval
+// so a genuinely-active owner doesn't flicker offline between requests.
+const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 const createStore = async (req, res, next) => {
   try {
@@ -43,19 +45,37 @@ const createStore = async (req, res, next) => {
 const getStores = async (req, res, next) => {
   try {
     const stores = await Store.find().sort({ createdAt: -1 }).lean();
-    const owners = await User.find({ role: "STORE_OWNER", storeId: { $in: stores.map((s) => s._id) } }).select(
-      "storeId lastLoginAt lastActiveAt"
-    );
-    const ownerMap = new Map(owners.map((o) => [o.storeId.toString(), o]));
-    const now = Date.now();
 
+    // "Last login" / "Online" should reflect ANYONE who uses the store —
+    // owner or staff — so roll every store user's timestamps up to the store,
+    // keeping the most recent of each. Only the owner's account drove this
+    // before, so a store worked entirely by staff looked untouched for weeks.
+    const users = await User.find({
+      role: { $in: ["STORE_OWNER", "STORE_STAFF"] },
+      storeId: { $in: stores.map((s) => s._id) }
+    }).select("storeId lastLoginAt lastActiveAt refreshToken");
+
+    const byStore = new Map();
+    for (const u of users) {
+      const key = u.storeId.toString();
+      const entry = byStore.get(key) || { lastLoginAt: null, lastActiveAt: null, hasLiveSession: false };
+      if (u.lastLoginAt && (!entry.lastLoginAt || u.lastLoginAt > entry.lastLoginAt)) entry.lastLoginAt = u.lastLoginAt;
+      if (u.lastActiveAt && (!entry.lastActiveAt || u.lastActiveAt > entry.lastActiveAt)) entry.lastActiveAt = u.lastActiveAt;
+      // A user with a refreshToken still holds a session (hasn't logged out or
+      // been idle-timed-out) — required for the store to count as "online".
+      if (u.refreshToken) entry.hasLiveSession = true;
+      byStore.set(key, entry);
+    }
+
+    const now = Date.now();
     const withOwnerInfo = stores.map((s) => {
-      const owner = ownerMap.get(s._id.toString());
+      const info = byStore.get(s._id.toString()) || {};
+      const lastActiveMs = info.lastActiveAt ? new Date(info.lastActiveAt).getTime() : 0;
       return {
         ...s,
-        lastLoginAt: owner?.lastLoginAt || null,
-        lastActiveAt: owner?.lastActiveAt || null,
-        isOnline: !!(owner?.lastActiveAt && now - new Date(owner.lastActiveAt).getTime() < ONLINE_WINDOW_MS)
+        lastLoginAt: info.lastLoginAt || null,
+        lastActiveAt: info.lastActiveAt || null,
+        isOnline: !!info.hasLiveSession && lastActiveMs > 0 && now - lastActiveMs < ONLINE_WINDOW_MS
       };
     });
 
@@ -77,21 +97,51 @@ const getStoreById = async (req, res, next) => {
 
 const updateStore = async (req, res, next) => {
   try {
-    const { storeName, ownerName, status, salesEnabled, expensesEnabled } = req.body;
-    const store = await Store.findByIdAndUpdate(
-      req.params.id,
-      {
-        $set: {
-          ...(storeName && { storeName }),
-          ...(ownerName && { ownerName }),
-          ...(status && { status }),
-          ...(salesEnabled !== undefined && { salesEnabled }),
-          ...(expensesEnabled !== undefined && { expensesEnabled })
-        }
-      },
-      { new: true }
-    );
+    const { storeName, ownerName, ownerPhone, password, status, salesEnabled, expensesEnabled, transfersEnabled } = req.body;
+
+    const store = await Store.findById(req.params.id);
     if (!store) return res.status(404).json({ message: "Store not found" });
+
+    const owner = await User.findOne({ storeId: store._id, role: "STORE_OWNER" });
+
+    // Changing the login phone ("username") — make sure it isn't already
+    // taken by another account before touching either record.
+    if (ownerPhone && ownerPhone !== store.ownerPhone) {
+      const clash = await User.findOne({ phone: ownerPhone, _id: { $ne: owner?._id } });
+      if (clash) return res.status(409).json({ message: "A user with this phone already exists" });
+      store.ownerPhone = ownerPhone;
+    }
+
+    if (storeName) store.storeName = storeName;
+    if (ownerName) store.ownerName = ownerName;
+    if (status) store.status = status;
+    if (salesEnabled !== undefined) store.salesEnabled = salesEnabled;
+    if (expensesEnabled !== undefined) store.expensesEnabled = expensesEnabled;
+    if (transfersEnabled !== undefined) store.transfersEnabled = transfersEnabled;
+
+    let passwordHash;
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ message: "password must be at least 6 characters" });
+      }
+      passwordHash = await bcrypt.hash(password, 10);
+      store.passwordHash = passwordHash;
+    }
+
+    await store.save();
+
+    // Keep the owner's own login record (what login/impersonation actually
+    // read) in step with the store's owner fields.
+    if (owner) {
+      if (ownerName) owner.name = ownerName;
+      if (ownerPhone) owner.phone = ownerPhone;
+      if (passwordHash) {
+        owner.passwordHash = passwordHash;
+        owner.refreshToken = null; // force any existing session to log in again
+      }
+      await owner.save();
+    }
+
     res.json(store);
   } catch (err) {
     next(err);

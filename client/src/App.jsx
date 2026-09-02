@@ -6,6 +6,7 @@ import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
 import SuperAdminDashboard from './pages/superadmin/Dashboard'
 import Stores from './pages/superadmin/Stores'
+import Admins from './pages/superadmin/Admins'
 import AdminNotifications from './pages/superadmin/Notifications'
 import Subscriptions from './pages/superadmin/Subscriptions'
 import AdminActivityLog from './pages/superadmin/ActivityLog'
@@ -16,6 +17,7 @@ import Customers from './pages/store/Customers'
 import Rentals from './pages/store/Rentals'
 import Sales from './pages/store/Sales'
 import Expenses from './pages/store/Expenses'
+import Transfers from './pages/store/Transfers'
 import Payments from './pages/store/Payments'
 import Reports from './pages/store/Reports'
 import ActivityLog from './pages/store/ActivityLog'
@@ -47,6 +49,7 @@ export default function App() {
                 <Route element={<AppLayout />}>
                   <Route path="/admin" element={<SuperAdminDashboard />} handle={{ title: 'Overview' }} />
                   <Route path="/admin/stores" element={<Stores />} handle={{ title: 'Stores' }} />
+                  <Route path="/admin/admins" element={<Admins />} handle={{ title: 'Admins' }} />
                   <Route path="/admin/notifications" element={<AdminNotifications />} handle={{ title: 'Notifications' }} />
                   <Route path="/admin/subscriptions" element={<Subscriptions />} handle={{ title: 'Subscriptions' }} />
                   <Route path="/admin/activity-log" element={<AdminActivityLog />} handle={{ title: 'Activity Log' }} />
@@ -62,6 +65,7 @@ export default function App() {
                   <Route path="/store/rentals" element={<Rentals />} handle={{ title: 'Rentals' }} />
                   <Route path="/store/sales" element={<Sales />} handle={{ title: 'Sales' }} />
                   <Route path="/store/expenses" element={<Expenses />} handle={{ title: 'Expenses' }} />
+                  <Route path="/store/transfers" element={<Transfers />} handle={{ title: 'Transfer Payments' }} />
                   <Route path="/store/payments" element={<Payments />} handle={{ title: 'Payments' }} />
                   <Route path="/store/reports" element={<Reports />} handle={{ title: 'Reports' }} />
                   <Route path="/store/activity-log" element={<ActivityLog />} handle={{ title: 'Activity Log' }} />

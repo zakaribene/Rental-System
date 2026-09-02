@@ -3,6 +3,7 @@ const Payment = require("../models/Payment");
 const RentalTransaction = require("../models/RentalTransaction");
 const SaleTransaction = require("../models/SaleTransaction");
 const Expense = require("../models/Expense");
+const Transfer = require("../models/Transfer");
 
 const dailyTotals = async (req, res, next) => {
   try {
@@ -79,6 +80,36 @@ const summary = async (req, res, next) => {
     for (const [methodId, total] of expenseMap) {
       if (merged.some((r) => r._id?.toString() === methodId)) continue;
       merged.push({ _id: new mongoose.Types.ObjectId(methodId), total: -total, count: 0 });
+    }
+
+    // Transfers between the store's own methods net out to zero overall, but
+    // shift the balance from one method to another — fold that shift in here
+    // so these cards match the Transfer Payments page's per-method balances.
+    const transferMatch = { storeId };
+    if (match.date) transferMatch.date = match.date;
+    if (match.paymentMethodId) {
+      transferMatch.$or = [{ fromMethodId: match.paymentMethodId }, { toMethodId: match.paymentMethodId }];
+    }
+    const transferTotals = await Transfer.aggregate([
+      { $match: transferMatch },
+      {
+        $facet: {
+          incoming: [{ $group: { _id: "$toMethodId", total: { $sum: "$amount" } } }],
+          outgoing: [{ $group: { _id: "$fromMethodId", total: { $sum: "$amount" } } }]
+        }
+      }
+    ]);
+    const transferMap = new Map();
+    for (const row of transferTotals[0]?.incoming || []) {
+      transferMap.set(row._id.toString(), (transferMap.get(row._id.toString()) || 0) + row.total);
+    }
+    for (const row of transferTotals[0]?.outgoing || []) {
+      transferMap.set(row._id.toString(), (transferMap.get(row._id.toString()) || 0) - row.total);
+    }
+    for (const [methodId, delta] of transferMap) {
+      const existing = merged.find((r) => r._id?.toString() === methodId);
+      if (existing) existing.total += delta;
+      else merged.push({ _id: new mongoose.Types.ObjectId(methodId), total: delta, count: 0 });
     }
 
     res.json(merged);

@@ -14,6 +14,9 @@ import {
   Power,
   ShoppingBag,
   Receipt,
+  ArrowLeftRight,
+  SlidersHorizontal,
+  Check,
 } from 'lucide-react'
 import { listStores, createStore, updateStore, resetStorePassword, impersonateStore } from '../../api/stores'
 import Card from '../../components/ui/Card'
@@ -26,13 +29,38 @@ import Input, { Field } from '../../components/ui/Input'
 import RowActionsMenu from '../../components/ui/RowActionsMenu'
 import Badge, { StatusBadge } from '../../components/ui/Badge'
 import { PageHeader, EmptyState, Spinner, Alert } from '../../components/ui/Misc'
-import { formatDate, formatRelativeTime } from '../../lib/utils'
+import { formatDate, formatRelativeTime, cn } from '../../lib/utils'
 import { apiErrorMessage, getAccessToken } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { stashAdminSession } from '../../components/layout/ImpersonationBar'
 
 const emptyForm = { storeName: '', ownerName: '', ownerPhone: '', password: '' }
+const MIN_PASSWORD_LENGTH = 6
 const LIVE_REFRESH_INTERVAL = 4000
+
+// Every per-store feature the Super Admin can switch on/off from one place.
+// Add a new row here and it shows up in the "Manage features" modal — no
+// other wiring on this page needed.
+const STORE_FEATURES = [
+  {
+    key: 'salesEnabled',
+    label: 'Sales',
+    icon: ShoppingBag,
+    description: 'Point-of-sale — sell products outright and track sales revenue.',
+  },
+  {
+    key: 'expensesEnabled',
+    label: 'Expenses',
+    icon: Receipt,
+    description: "Record store spending, deducted from each payment method's balance.",
+  },
+  {
+    key: 'transfersEnabled',
+    label: 'Transfer Payments',
+    icon: ArrowLeftRight,
+    description: 'Move money between payment methods (e.g. Cash → Bank).',
+  },
+]
 
 export default function Stores() {
   const navigate = useNavigate()
@@ -46,6 +74,7 @@ export default function Stores() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [resetTarget, setResetTarget] = useState(null)
+  const [featuresTarget, setFeaturesTarget] = useState(null)
   const [impersonatingId, setImpersonatingId] = useState('')
 
   const load = (silent) => {
@@ -98,10 +127,19 @@ export default function Stores() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (form.password && form.password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
     setSaving(true)
     try {
       if (editing) {
-        await updateStore(editing._id, { storeName: form.storeName, ownerName: form.ownerName })
+        await updateStore(editing._id, {
+          storeName: form.storeName,
+          ownerName: form.ownerName,
+          ownerPhone: form.ownerPhone,
+          ...(form.password ? { password: form.password } : {}),
+        })
       } else {
         await createStore(form)
       }
@@ -119,16 +157,6 @@ export default function Stores() {
     load()
   }
 
-  const toggleSalesFeature = async (store) => {
-    await updateStore(store._id, { salesEnabled: !store.salesEnabled })
-    load()
-  }
-
-  const toggleExpensesFeature = async (store) => {
-    await updateStore(store._id, { expensesEnabled: !store.expensesEnabled })
-    load()
-  }
-
   return (
     <div className="animate-fadeIn">
       <PageHeader
@@ -141,7 +169,7 @@ export default function Stores() {
         }
       />
 
-      {error && !modalOpen && !resetTarget && (
+      {error && !modalOpen && !resetTarget && !featuresTarget && (
         <div className="mb-5">
           <Alert>{error}</Alert>
         </div>
@@ -210,6 +238,13 @@ export default function Stores() {
                   ),
                 },
                 {
+                  key: 'transfers',
+                  header: 'Transfers',
+                  render: (row) => (
+                    <Badge tone={row.transfersEnabled ? 'success' : 'neutral'}>{row.transfersEnabled ? 'Enabled' : 'Disabled'}</Badge>
+                  ),
+                },
+                {
                   key: 'subscription',
                   header: 'Subscription',
                   render: (row) => (
@@ -260,16 +295,10 @@ export default function Stores() {
                         { key: 'edit', label: 'Edit', icon: Pencil, onClick: () => openEdit(row) },
                         { key: 'reset', label: 'Reset password', icon: KeyRound, onClick: () => setResetTarget(row) },
                         {
-                          key: 'sales',
-                          label: row.salesEnabled ? 'Disable Sales' : 'Enable Sales',
-                          icon: ShoppingBag,
-                          onClick: () => toggleSalesFeature(row),
-                        },
-                        {
-                          key: 'expenses',
-                          label: row.expensesEnabled ? 'Disable Expenses' : 'Enable Expenses',
-                          icon: Receipt,
-                          onClick: () => toggleExpensesFeature(row),
+                          key: 'features',
+                          label: 'Manage features',
+                          icon: SlidersHorizontal,
+                          onClick: () => setFeaturesTarget(row),
                         },
                         {
                           key: 'status',
@@ -330,34 +359,154 @@ export default function Stores() {
             />
           </Field>
 
-          <Field label="Owner phone" required hint={editing ? 'Phone number cannot be changed here.' : undefined}>
+          <Field
+            label="Owner phone"
+            required
+            hint={editing ? "This is the owner's login username — changing it logs them out." : undefined}
+          >
             <Input
               icon={Phone}
               value={form.ownerPhone}
               onChange={(e) => setForm((f) => ({ ...f, ownerPhone: e.target.value }))}
               placeholder="612345678"
-              disabled={!!editing}
               required
             />
           </Field>
 
-          {!editing && (
-            <Field label="Password" required>
-              <Input
-                icon={Lock}
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                placeholder="Set an initial password"
-                required
-              />
-            </Field>
-          )}
+          <Field
+            label={editing ? 'New password' : 'Password'}
+            required={!editing}
+            hint={editing ? 'Leave blank to keep the current password. No need for the old one.' : undefined}
+          >
+            <Input
+              icon={Lock}
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+              placeholder={editing ? 'Set a new password' : 'Set an initial password'}
+              required={!editing}
+            />
+          </Field>
         </form>
       </Modal>
 
       <ResetPasswordModal store={resetTarget} onClose={() => setResetTarget(null)} />
+
+      <FeaturesModal store={featuresTarget} onClose={() => setFeaturesTarget(null)} onChanged={() => load(true)} />
     </div>
+  )
+}
+
+function Switch({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-4 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-primary-500/20',
+        checked ? 'bg-primary-600' : 'bg-ink-200 dark:bg-ink-700'
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform',
+          checked ? 'translate-x-[22px]' : 'translate-x-0.5'
+        )}
+      />
+    </button>
+  )
+}
+
+function FeaturesModal({ store, onClose, onChanged }) {
+  const [flags, setFlags] = useState({})
+  const [savingKey, setSavingKey] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (store) {
+      setFlags(Object.fromEntries(STORE_FEATURES.map((f) => [f.key, !!store[f.key]])))
+      setError('')
+      setSavingKey('')
+    }
+  }, [store])
+
+  if (!store) return null
+
+  const enabledCount = STORE_FEATURES.filter((f) => flags[f.key]).length
+
+  const toggle = async (key, next) => {
+    setError('')
+    setSavingKey(key)
+    setFlags((f) => ({ ...f, [key]: next })) // optimistic
+    try {
+      await updateStore(store._id, { [key]: next })
+      onChanged?.()
+    } catch (err) {
+      setFlags((f) => ({ ...f, [key]: !next })) // revert on failure
+      setError(apiErrorMessage(err, 'Failed to update feature'))
+    } finally {
+      setSavingKey('')
+    }
+  }
+
+  return (
+    <Modal
+      open={!!store}
+      onClose={onClose}
+      title="Manage features"
+      subtitle={`${store.storeName} · ${enabledCount}/${STORE_FEATURES.length} enabled`}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Done
+        </Button>
+      }
+    >
+      <div className="space-y-3">
+        {error && <Alert>{error}</Alert>}
+        <p className="text-sm text-ink-500 dark:text-ink-400">
+          Turn a module on to make it available inside this store. Changes apply immediately.
+        </p>
+
+        <div className="divide-y divide-ink-100 overflow-hidden rounded-xl border border-ink-100 dark:divide-ink-800 dark:border-ink-800">
+          {STORE_FEATURES.map((f) => {
+            const on = !!flags[f.key]
+            const busy = savingKey === f.key
+            return (
+              <div key={f.key} className="flex items-center gap-4 p-4">
+                <div
+                  className={cn(
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-4 transition-colors',
+                    on
+                      ? 'bg-primary-50 text-primary-600 ring-primary-100 dark:bg-primary-500/15 dark:text-primary-300 dark:ring-primary-500/20'
+                      : 'bg-ink-50 text-ink-400 ring-ink-100 dark:bg-ink-800 dark:ring-ink-800'
+                  )}
+                >
+                  <f.icon size={18} strokeWidth={2.25} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-ink-900 dark:text-white">{f.label}</p>
+                    {on && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-success-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success-600 dark:bg-success-500/15 dark:text-success-300">
+                        <Check size={10} strokeWidth={3} /> On
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs leading-relaxed text-ink-500 dark:text-ink-400">{f.description}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {busy && <Spinner size={14} />}
+                  <Switch checked={on} disabled={busy} onChange={(next) => toggle(f.key, next)} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Modal>
   )
 }
 

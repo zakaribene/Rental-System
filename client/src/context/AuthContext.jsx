@@ -64,6 +64,18 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
+  // Merge fresh fields into the signed-in user (e.g. after they edit their
+  // own name/phone) so the Topbar and anything else reading `user` updates
+  // without a re-login.
+  const updateUser = (patch) => {
+    setUser((prev) => {
+      if (!prev) return prev
+      const next = { ...prev, ...patch }
+      persistUser(next)
+      return next
+    })
+  }
+
   const logout = async () => {
     try {
       await authApi.logout()
@@ -114,7 +126,7 @@ export function AuthProvider({ children }) {
   }, [user])
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, impersonate, initializing }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, login, logout, impersonate, updateUser, initializing }}>{children}</AuthContext.Provider>
   )
 }
 

@@ -8,9 +8,11 @@ import {
   ClipboardList,
   ShoppingBag,
   Receipt,
+  ArrowLeftRight,
   Wallet,
   BarChart3,
   UserCog,
+  ShieldCheck,
   Sparkles,
   Megaphone,
   CalendarClock,
@@ -28,6 +30,7 @@ import useSupportUnread from '../../hooks/useSupportUnread'
 const superAdminNav = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/stores', label: 'Stores', icon: Building2 },
+  { to: '/admin/admins', label: 'Admins', icon: ShieldCheck },
   { to: '/admin/subscriptions', label: 'Subscriptions', icon: CalendarClock },
   { to: '/admin/notifications', label: 'Notifications', icon: Megaphone },
   { to: '/admin/activity-log', label: 'Activity Log', icon: History },
@@ -42,6 +45,7 @@ const storeNav = [
   { to: '/store/payments', label: 'Payments', icon: Wallet, module: 'payments' },
   { to: '/store/sales', label: 'Sales', icon: ShoppingBag, module: 'sales', requiresSalesEnabled: true },
   { to: '/store/expenses', label: 'Expenses', icon: Receipt, module: 'expenses', requiresExpensesEnabled: true },
+  { to: '/store/transfers', label: 'Transfer Payments', icon: ArrowLeftRight, module: 'transfers', requiresTransfersEnabled: true },
   { to: '/store/reports', label: 'Reports', icon: BarChart3, module: 'reports' },
   { to: '/store/users', label: 'Staff', icon: UserCog, ownerOnly: true },
   { to: '/store/activity-log', label: 'Activity Log', icon: History, module: 'activityLog' },
@@ -56,10 +60,12 @@ export default function Sidebar({ open = false, onClose }) {
   const showUsers = user?.role === 'STORE_OWNER'
   const [salesEnabled, setSalesEnabled] = useState(false)
   const [expensesEnabled, setExpensesEnabled] = useState(false)
+  const [transfersEnabled, setTransfersEnabled] = useState(false)
   const nav = (isSuperAdmin ? superAdminNav : storeNav).filter((item) => {
     if (item.module && !can(item.module)) return false
     if (item.requiresSalesEnabled && !salesEnabled) return false
     if (item.requiresExpensesEnabled && !expensesEnabled) return false
+    if (item.requiresTransfersEnabled && !transfersEnabled) return false
     if (item.ownerOnly && !showUsers) return false
     return true
   })
@@ -70,10 +76,12 @@ export default function Sidebar({ open = false, onClose }) {
       .then((store) => {
         setSalesEnabled(!!store.salesEnabled)
         setExpensesEnabled(!!store.expensesEnabled)
+        setTransfersEnabled(!!store.transfersEnabled)
       })
       .catch(() => {
         setSalesEnabled(false)
         setExpensesEnabled(false)
+        setTransfersEnabled(false)
       })
   }, [isSuperAdmin])
 

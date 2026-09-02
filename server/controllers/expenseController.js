@@ -1,9 +1,7 @@
-const mongoose = require("mongoose");
 const Expense = require("../models/Expense");
 const ExpenseCategory = require("../models/ExpenseCategory");
 const PaymentMethod = require("../models/PaymentMethod");
-const Payment = require("../models/Payment");
-const { getPaymentMethodBalance } = require("../utils/paymentMethodBalance");
+const { getPaymentMethodBalance, getAllPaymentMethodBalances } = require("../utils/paymentMethodBalance");
 
 const EXPENSE_POPULATE = [
   { path: "paymentMethodId", select: "name" },
@@ -100,31 +98,12 @@ const getExpenseCategories = async (req, res, next) => {
 };
 
 // Every payment method's current available balance (money collected minus
-// refunds and expenses) — powers the "available balance" hint next to the
-// method picker on the expense form, live as the store's ledger changes.
+// refunds and expenses, net of transfers) — powers the "available balance"
+// hint next to the method picker on the expense form, live as the store's
+// ledger changes. Shared with the Transfer Payments page so they always agree.
 const getExpenseBalances = async (req, res, next) => {
   try {
-    const storeId = new mongoose.Types.ObjectId(req.storeId);
-    const methods = await PaymentMethod.find({ storeId: req.storeId }).sort({ name: 1 });
-
-    const paymentTotals = await Payment.aggregate([
-      { $match: { storeId } },
-      { $project: { paymentMethodId: 1, signedAmount: { $cond: [{ $eq: ["$type", "REFUND"] }, { $multiply: ["$amount", -1] }, "$amount"] } } },
-      { $group: { _id: "$paymentMethodId", total: { $sum: "$signedAmount" } } }
-    ]);
-    const expenseTotals = await Expense.aggregate([
-      { $match: { storeId } },
-      { $group: { _id: "$paymentMethodId", total: { $sum: "$amount" } } }
-    ]);
-    const paymentMap = new Map(paymentTotals.map((p) => [p._id?.toString(), p.total]));
-    const expenseMap = new Map(expenseTotals.map((e) => [e._id?.toString(), e.total]));
-
-    const balances = methods.map((m) => ({
-      _id: m._id,
-      name: m.name,
-      balance: (paymentMap.get(m._id.toString()) || 0) - (expenseMap.get(m._id.toString()) || 0)
-    }));
-
+    const balances = await getAllPaymentMethodBalances(req.storeId);
     res.json(balances);
   } catch (err) {
     next(err);

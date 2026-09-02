@@ -3,8 +3,10 @@ const User = require("../models/User");
 
 // Considered "online" if active within this window (see storeController's
 // isOnline calculation) — only bother writing lastActiveAt this often too,
-// so we're not hitting the DB on every single request.
-const ACTIVITY_TOUCH_INTERVAL_MS = 2 * 60 * 1000;
+// so we're not hitting the DB on every single request. Kept short so a
+// closed tab (no explicit logout) still turns "Online" into an accurate
+// "Xm ago" quickly.
+const ACTIVITY_TOUCH_INTERVAL_MS = 60 * 1000;
 
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
