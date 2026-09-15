@@ -85,7 +85,10 @@ export default function Products() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm(emptyForm)
+    // A store with sales but not rentals has nothing to choose — default
+    // straight to SALE so the (hidden, see below) listing-type picker never
+    // needs to be shown just to pick the only option available.
+    setForm({ ...emptyForm, listingType: store?.rentalsEnabled === false && store?.salesEnabled ? 'SALE' : 'RENT' })
     setError('')
     setModalOpen(true)
   }
@@ -345,7 +348,7 @@ export default function Products() {
             )}
           </div>
 
-          {store?.salesEnabled && (
+          {store?.salesEnabled && store?.rentalsEnabled !== false && (
             <Field label="Listing type" hint="Rent it out, or sell it and track stock">
               <Select value={form.listingType} onChange={(e) => setForm((f) => ({ ...f, listingType: e.target.value }))}>
                 <option value="RENT">Rent</option>

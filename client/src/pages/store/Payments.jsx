@@ -24,25 +24,33 @@ export default function Payments() {
   const { can, loaded } = usePermissions()
   const [methods, setMethods] = useState([])
   const [debts, setDebts] = useState([])
+  const [rentalsEnabled, setRentalsEnabled] = useState(true)
   const [salesEnabled, setSalesEnabled] = useState(false)
   const [methodModalOpen, setMethodModalOpen] = useState(false)
   const [settleDebt, setSettleDebt] = useState(null)
 
   const loadDebts = () => {
-    Promise.all([listRentals(), salesEnabled ? listSales() : Promise.resolve([])]).then(([rentals, sales]) =>
-      setDebts(combineDebts(rentals, sales))
-    )
+    Promise.all([
+      rentalsEnabled ? listRentals() : Promise.resolve([]),
+      salesEnabled ? listSales() : Promise.resolve([]),
+    ]).then(([rentals, sales]) => setDebts(combineDebts(rentals, sales)))
   }
   const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(debts, 10)
 
   useEffect(() => {
     listPaymentMethods().then(setMethods)
     getMyStore()
-      .then((store) => setSalesEnabled(!!store.salesEnabled))
-      .catch(() => setSalesEnabled(false))
+      .then((store) => {
+        setRentalsEnabled(!!store.rentalsEnabled)
+        setSalesEnabled(!!store.salesEnabled)
+      })
+      .catch(() => {
+        setRentalsEnabled(false)
+        setSalesEnabled(false)
+      })
   }, [])
 
-  useEffect(loadDebts, [salesEnabled])
+  useEffect(loadDebts, [rentalsEnabled, salesEnabled])
 
   if (loaded && !can('payments')) return <Navigate to="/store" replace />
 

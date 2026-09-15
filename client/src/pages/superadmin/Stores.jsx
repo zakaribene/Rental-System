@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   Receipt,
   ArrowLeftRight,
+  ClipboardList,
   SlidersHorizontal,
   Check,
 } from 'lucide-react'
@@ -42,6 +43,12 @@ const LIVE_REFRESH_INTERVAL = 4000
 // Add a new row here and it shows up in the "Manage features" modal — no
 // other wiring on this page needed.
 const STORE_FEATURES = [
+  {
+    key: 'rentalsEnabled',
+    label: 'Rentals',
+    icon: ClipboardList,
+    description: 'Rent items out to customers — deposits, due dates, returns and damage tracking.',
+  },
   {
     key: 'salesEnabled',
     label: 'Sales',
@@ -223,6 +230,13 @@ export default function Stores() {
                 { key: 'ownerName', header: 'Owner' },
                 { key: 'ownerPhone', header: 'Phone' },
                 { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+                {
+                  key: 'rentals',
+                  header: 'Rentals',
+                  render: (row) => (
+                    <Badge tone={row.rentalsEnabled ? 'success' : 'neutral'}>{row.rentalsEnabled ? 'Enabled' : 'Disabled'}</Badge>
+                  ),
+                },
                 {
                   key: 'sales',
                   header: 'Sales',

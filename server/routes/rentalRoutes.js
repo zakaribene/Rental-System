@@ -3,13 +3,20 @@ const { createRental, getRentals, getRentalById, updateRental, addRentalDeposit,
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/roleMiddleware");
 const storeScopeMiddleware = require("../middleware/storeScopeMiddleware");
+const requireStoreFeature = require("../middleware/storeFeatureMiddleware");
 const requireModulePermission = require("../middleware/modulePermissionMiddleware");
 const logActivity = require("../middleware/activityLogger");
 const { uploadDocument } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
-router.use(authMiddleware, requireRole("STORE_OWNER", "STORE_STAFF"), storeScopeMiddleware, requireModulePermission("rentals"));
+router.use(
+  authMiddleware,
+  requireRole("STORE_OWNER", "STORE_STAFF"),
+  storeScopeMiddleware,
+  requireStoreFeature("rentalsEnabled"),
+  requireModulePermission("rentals")
+);
 
 /**
  * @swagger

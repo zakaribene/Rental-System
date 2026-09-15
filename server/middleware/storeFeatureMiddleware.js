@@ -2,6 +2,7 @@
 // (populated by storeScopeMiddleware). Only Super Admin can flip these flags
 // on Store, so this middleware never runs for SUPER_ADMIN requests.
 const FEATURE_LABELS = {
+  rentalsEnabled: "Rentals",
   salesEnabled: "Sales",
   expensesEnabled: "Expenses",
   transfersEnabled: "Transfer Payments"

@@ -12,7 +12,7 @@ const storeScopeMiddleware = async (req, res, next) => {
     // Blocks system-wide usage the moment a store is deactivated (e.g. an
     // expired grace period), not just fresh logins from already-active sessions.
     const [store, user] = await Promise.all([
-      Store.findById(req.user.storeId).select("status salesEnabled expensesEnabled transfersEnabled"),
+      Store.findById(req.user.storeId).select("status rentalsEnabled salesEnabled expensesEnabled transfersEnabled"),
       User.findById(req.user.id).select("permissions")
     ]);
     if (!store || store.status !== "active") {
@@ -24,6 +24,7 @@ const storeScopeMiddleware = async (req, res, next) => {
 
     req.storeId = req.user.storeId;
     req.storeFeatures = {
+      rentalsEnabled: store.rentalsEnabled,
       salesEnabled: store.salesEnabled,
       expensesEnabled: store.expensesEnabled,
       transfersEnabled: store.transfersEnabled

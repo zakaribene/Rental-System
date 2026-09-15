@@ -4,6 +4,12 @@ const saleTransactionSchema = new mongoose.Schema({
   storeId: { type: mongoose.Schema.Types.ObjectId, ref: "Store", required: true },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
   staffUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  // Set when this sale was created alongside a rental in the same checkout
+  // (see rentalController.createRental) — links the two so a receipt can
+  // show "rented" and "sold" items from one visit as a single order, while
+  // each keeps its own stock/debt logic (rentals reserve + can be returned,
+  // sales permanently decrement stock).
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: "RentalTransaction" },
   items: [
     {
       productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },

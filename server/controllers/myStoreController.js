@@ -3,7 +3,7 @@ const Store = require("../models/Store");
 const getMyStore = async (req, res, next) => {
   try {
     const store = await Store.findById(req.storeId).select(
-      "storeName ownerName status salesEnabled expensesEnabled transfersEnabled logoUrl createdAt subscriptionStatus subscriptionEndsAt gracePeriodEndsAt graceDays graceHours graceMinutes graceBannerColor graceMessage"
+      "storeName ownerName status rentalsEnabled salesEnabled expensesEnabled transfersEnabled logoUrl createdAt subscriptionStatus subscriptionEndsAt gracePeriodEndsAt graceDays graceHours graceMinutes graceBannerColor graceMessage"
     );
     if (!store) return res.status(404).json({ message: "Store not found" });
     res.json(store);

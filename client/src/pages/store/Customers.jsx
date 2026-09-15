@@ -339,6 +339,7 @@ function CustomerDetailModal({ customer, onClose }) {
     setLoading(true)
     listRentals({ customerId: customer._id })
       .then(setRentals)
+      .catch(() => setRentals([]))
       .finally(() => setLoading(false))
   }, [customer])
 

@@ -41,7 +41,7 @@ const storeNav = [
   { to: '/store', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/store/products', label: 'Products', icon: Package, module: 'products' },
   { to: '/store/customers', label: 'Customers', icon: Users, module: 'customers' },
-  { to: '/store/rentals', label: 'Rentals', icon: ClipboardList, module: 'rentals' },
+  { to: '/store/rentals', label: 'Rentals', icon: ClipboardList, module: 'rentals', requiresRentalsEnabled: true },
   { to: '/store/payments', label: 'Payments', icon: Wallet, module: 'payments' },
   { to: '/store/sales', label: 'Sales', icon: ShoppingBag, module: 'sales', requiresSalesEnabled: true },
   { to: '/store/expenses', label: 'Expenses', icon: Receipt, module: 'expenses', requiresExpensesEnabled: true },
@@ -58,11 +58,16 @@ export default function Sidebar({ open = false, onClose }) {
   const supportUnread = useSupportUnread()
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
   const showUsers = user?.role === 'STORE_OWNER'
+  // Defaults true (unlike the others) — the system started rentals-only, so
+  // the nav item should show immediately rather than flicker away while the
+  // store's actual flag is still loading.
+  const [rentalsEnabled, setRentalsEnabled] = useState(true)
   const [salesEnabled, setSalesEnabled] = useState(false)
   const [expensesEnabled, setExpensesEnabled] = useState(false)
   const [transfersEnabled, setTransfersEnabled] = useState(false)
   const nav = (isSuperAdmin ? superAdminNav : storeNav).filter((item) => {
     if (item.module && !can(item.module)) return false
+    if (item.requiresRentalsEnabled && !rentalsEnabled) return false
     if (item.requiresSalesEnabled && !salesEnabled) return false
     if (item.requiresExpensesEnabled && !expensesEnabled) return false
     if (item.requiresTransfersEnabled && !transfersEnabled) return false
@@ -74,11 +79,13 @@ export default function Sidebar({ open = false, onClose }) {
     if (isSuperAdmin) return
     getMyStore()
       .then((store) => {
+        setRentalsEnabled(!!store.rentalsEnabled)
         setSalesEnabled(!!store.salesEnabled)
         setExpensesEnabled(!!store.expensesEnabled)
         setTransfersEnabled(!!store.transfersEnabled)
       })
       .catch(() => {
+        setRentalsEnabled(false)
         setSalesEnabled(false)
         setExpensesEnabled(false)
         setTransfersEnabled(false)

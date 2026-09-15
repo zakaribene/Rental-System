@@ -92,7 +92,7 @@ export default function StoreDashboard() {
     Promise.all([
       listProducts(),
       listCustomers(),
-      listRentals('active'),
+      listRentals('active').catch(() => []),
       getDailyTotals(today).catch(() => ({ grandTotal: 0, byMethod: [] })),
       getSummary({}).catch(() => []),
       listPaymentMethods().catch(() => []),

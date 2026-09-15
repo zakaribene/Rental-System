@@ -157,10 +157,10 @@ export default function Reports() {
 
   useEffect(() => {
     setDebtsLoading(true)
-    Promise.all([listRentals(), store?.salesEnabled ? listSales() : Promise.resolve([])])
+    Promise.all([store?.rentalsEnabled ? listRentals() : Promise.resolve([]), store?.salesEnabled ? listSales() : Promise.resolve([])])
       .then(([rentals, sales]) => setDebtRecords(combineDebts(rentals, sales)))
       .finally(() => setDebtsLoading(false))
-  }, [store?.salesEnabled])
+  }, [store?.rentalsEnabled, store?.salesEnabled])
 
   useEffect(() => {
     if (!store?.expensesEnabled) return
@@ -357,10 +357,19 @@ export default function Reports() {
   if (loaded && !can('reports')) return <Navigate to="/store" replace />
 
   const tabs = [
-    { key: 'rentals', label: 'Rentals', icon: ClipboardList },
+    store?.rentalsEnabled && { key: 'rentals', label: 'Rentals', icon: ClipboardList },
     store?.salesEnabled && { key: 'sales', label: 'Sales', icon: ShoppingBag },
     store?.expensesEnabled && { key: 'expenses', label: 'Expenses', icon: Receipt },
   ].filter(Boolean)
+
+  // The default activeTab assumes rentals is available — for the rare store
+  // that has it disabled, land on the first tab that's actually enabled
+  // instead of a blank pane with nothing selected.
+  useEffect(() => {
+    if (!store) return
+    if (tabs.length > 0 && !tabs.some((t) => t.key === activeTab)) setActiveTab(tabs[0].key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store])
 
   return (
     <div className="animate-fadeIn">
@@ -419,7 +428,7 @@ export default function Reports() {
         ))}
       </div>
 
-      {activeTab === 'rentals' && (
+      {activeTab === 'rentals' && store?.rentalsEnabled && (
         <>
           <Card className="mb-6">
             <CardHeader

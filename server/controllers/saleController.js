@@ -2,6 +2,7 @@ const SaleTransaction = require("../models/SaleTransaction");
 const Payment = require("../models/Payment");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+const { createSaleTransaction } = require("../utils/saleTransactionHelper");
 
 const createSale = async (req, res, next) => {
   try {
@@ -11,92 +12,22 @@ const createSale = async (req, res, next) => {
       return res.status(400).json({ message: "items are required" });
     }
 
-    // `payments` is a list of { paymentMethodId, amount } splits — a $30
-    // sale can be paid as $10 eDahab + $10 EVC + $10 cash. An empty/omitted
-    // list means nothing is collected now and the full total becomes debt.
-    const resolvedPayments = [];
-    for (const p of payments || []) {
-      const splitAmount = Number(p?.amount) || 0;
-      if (!p?.paymentMethodId || splitAmount <= 0) {
-        return res.status(400).json({ message: "Each payment split needs a paymentMethodId and an amount greater than 0" });
-      }
-      resolvedPayments.push({ paymentMethodId: p.paymentMethodId, amount: splitAmount });
-    }
-
     let customer = null;
     if (customerId) {
       customer = await Customer.findOne({ _id: customerId, storeId: req.storeId });
       if (!customer) return res.status(404).json({ message: "Customer not found" });
     }
 
-    // Merge quantities for repeated productIds first, so the stock check below
-    // sees the total requested for a product rather than checking each line
-    // item against the same starting stock figure independently.
-    const quantityByProduct = new Map();
-    for (const item of items) {
-      quantityByProduct.set(item.productId, (quantityByProduct.get(item.productId) || 0) + (item.quantity || 1));
-    }
-
-    const resolvedItems = [];
-    let subtotal = 0;
-
-    for (const [productId, quantity] of quantityByProduct) {
-      const product = await Product.findOne({ _id: productId, storeId: req.storeId, listingType: "SALE" });
-      if (!product) {
-        return res.status(404).json({ message: `Sale product ${productId} not found` });
-      }
-      if (product.stockQty < quantity) {
-        return res.status(409).json({ message: `Not enough stock for ${product.name} (${product.stockQty} left)` });
-      }
-      const unitPrice = product.salePrice;
-      resolvedItems.push({ productId: product._id, quantity, unitPrice });
-      subtotal += unitPrice * quantity;
-    }
-
-    const resolvedDiscount = Math.max(0, Number(discountAmount) || 0);
-    const totalAmount = Math.max(0, subtotal - resolvedDiscount);
-
-    const resolvedAmountPaid = resolvedPayments.reduce((sum, p) => sum + p.amount, 0);
-    if (resolvedAmountPaid > totalAmount) {
-      return res.status(400).json({ message: `The payment splits (${resolvedAmountPaid}) cannot exceed the total of ${totalAmount}` });
-    }
-
-    const sale = await SaleTransaction.create({
+    const { sale, payments: createdPayments } = await createSaleTransaction({
       storeId: req.storeId,
-      customerId: customerId || undefined,
+      customerId,
+      customer,
       staffUserId: req.user.id,
-      items: resolvedItems,
-      subtotal,
-      discountAmount: resolvedDiscount,
-      totalAmount,
-      amountPaid: resolvedAmountPaid,
-      paymentSplits: resolvedPayments
+      items,
+      discountAmount,
+      payments,
+      userId: req.user.id
     });
-
-    for (const item of resolvedItems) {
-      await Product.updateOne({ _id: item.productId }, { $inc: { stockQty: -item.quantity } });
-    }
-
-    const createdPayments = [];
-    if (resolvedPayments.length > 0) {
-      const itemsLabel = resolvedItems.length === 1 ? "1 item" : `${resolvedItems.length} items`;
-      for (const split of resolvedPayments) {
-        const payment = await Payment.create({
-          storeId: req.storeId,
-          saleId: sale._id,
-          customerId: customerId || undefined,
-          type: "SALE_PAYMENT",
-          isInitial: true,
-          amount: split.amount,
-          paymentMethodId: split.paymentMethodId,
-          recordedBy: req.user.id,
-          note: `Sale of ${itemsLabel} to ${customer?.fullName || "walk-in customer"} — sale #${sale._id.toString().slice(-6)}${
-            resolvedDiscount > 0 ? ` (discount ${resolvedDiscount})` : ""
-          }${resolvedAmountPaid < totalAmount ? ` — partial payment, ${totalAmount - resolvedAmountPaid} still owed` : ""}`
-        });
-        createdPayments.push(payment);
-      }
-    }
 
     res.status(201).json({ sale, payments: createdPayments });
   } catch (err) {

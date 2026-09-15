@@ -269,6 +269,25 @@ function SaleFormModal({ open, mode, sale, onClose, customers, products, methods
   const resolvedDiscount = Math.max(0, Number(discountAmount) || 0)
   const total = Math.max(0, subtotal - resolvedDiscount)
 
+  // Two rows can pick the same product — check the combined quantity against
+  // stock, not each row in isolation, so splitting one product across rows
+  // can't sneak past the per-row max on the quantity input.
+  const stockIssues = (() => {
+    const requestedByProduct = new Map()
+    for (const it of items) {
+      if (!it.productId) continue
+      requestedByProduct.set(it.productId, (requestedByProduct.get(it.productId) || 0) + (Number(it.quantity) || 0))
+    }
+    const issues = []
+    for (const [productId, requested] of requestedByProduct) {
+      const product = products.find((p) => p._id === productId)
+      if (product && requested > product.stockQty) {
+        issues.push({ name: product.name, available: product.stockQty, requested })
+      }
+    }
+    return issues
+  })()
+
   const allocated = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   const unallocated = Math.max(0, total - allocated)
   const owedAfter = Math.max(0, total - allocated)
@@ -286,6 +305,15 @@ function SaleFormModal({ open, mode, sale, onClose, customers, products, methods
     const cleanItems = items.filter((it) => it.productId).map((it) => ({ productId: it.productId, quantity: Number(it.quantity) || 1 }))
     if (cleanItems.length === 0) {
       setError('Select at least one product.')
+      return
+    }
+    if (stockIssues.length > 0) {
+      const issue = stockIssues[0]
+      setError(
+        issue.available === 0
+          ? `${issue.name} is out of stock.`
+          : `${issue.name} is out of stock — only ${issue.available} left, but ${issue.requested} were requested.`
+      )
       return
     }
     const cleanPayments = payments.filter((p) => p.paymentMethodId || p.amount)
@@ -336,7 +364,7 @@ function SaleFormModal({ open, mode, sale, onClose, customers, products, methods
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="sale-form" type="submit" loading={saving}>
+          <Button form="sale-form" type="submit" loading={saving} disabled={stockIssues.length > 0}>
             {mode === 'edit' ? 'Save changes' : 'Record sale'}
           </Button>
         </>
@@ -397,6 +425,19 @@ function SaleFormModal({ open, mode, sale, onClose, customers, products, methods
             Add item
           </Button>
           {products.length === 0 && <p className="mt-2 text-xs text-ink-400">No sale products with stock available. Add one from the Products page first.</p>}
+          {stockIssues.length > 0 && (
+            <div className="mt-3">
+              <Alert>
+                {stockIssues.map((issue, i) => (
+                  <p key={issue.name} className={i > 0 ? 'mt-1' : ''}>
+                    {issue.available === 0
+                      ? `${issue.name} is out of stock.`
+                      : `${issue.name} is out of stock — only ${issue.available} left, but ${issue.requested} were requested.`}
+                  </p>
+                ))}
+              </Alert>
+            </div>
+          )}
         </div>
 
         <Field label="Discount" hint="Optional — fixed amount off the subtotal">

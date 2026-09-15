@@ -16,6 +16,7 @@ import {
   Eye,
   Pencil,
   Coins,
+  ShieldAlert,
 } from 'lucide-react'
 import { listRentals, createRental, updateRental, getRental, addRentalDeposit, returnRental, cancelRental, uploadDepositDocument } from '../../api/rentals'
 import { listCustomers } from '../../api/customers'
@@ -83,6 +84,7 @@ export default function Rentals() {
   const [detail, setDetail] = useState(null)
   const [detailAutoPrint, setDetailAutoPrint] = useState(false)
   const [store, setStore] = useState(null)
+  const [storeChecked, setStoreChecked] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -99,7 +101,10 @@ export default function Rentals() {
     listCustomers().then(setCustomers)
     loadProducts()
     listPaymentMethods().then(setMethods).catch(() => setMethods([]))
-    getMyStore().then(setStore).catch(() => setStore(null))
+    getMyStore()
+      .then(setStore)
+      .catch(() => setStore(null))
+      .finally(() => setStoreChecked(true))
   }, [])
 
   const openDetail = async (rental, { autoPrint = false } = {}) => {
@@ -116,6 +121,7 @@ export default function Rentals() {
   }
 
   const rentableProducts = allProducts.filter((p) => p.listingType !== 'SALE')
+  const saleProducts = allProducts.filter((p) => p.listingType === 'SALE' && p.stockQty > 0)
 
   const openCreate = () => {
     setFormTarget({ mode: 'create', rental: null, products: rentableProducts.filter((p) => p.availableQty > 0) })
@@ -157,6 +163,7 @@ export default function Rentals() {
   const { page, setPage, pageCount, pageItems, total, pageSize } = usePagination(filteredRentals, 10)
 
   if (loaded && !can('rentals')) return <Navigate to="/store" replace />
+  if (storeChecked && !store?.rentalsEnabled) return <Navigate to="/store" replace />
 
   return (
     <div className="animate-fadeIn">
@@ -254,6 +261,7 @@ export default function Rentals() {
         mode={formTarget?.mode || 'create'}
         rental={formTarget?.rental}
         products={formTarget?.products || []}
+        saleProducts={saleProducts}
         customers={customers}
         methods={methods}
         onClose={() => setFormTarget(null)}
@@ -299,9 +307,18 @@ export default function Rentals() {
   )
 }
 
-function RentalFormModal({ open, mode, rental, onClose, customers, products, methods, onSaved, onCustomerCreated }) {
+function RentalFormModal({ open, mode, rental, onClose, customers, products, saleProducts, methods, onSaved, onCustomerCreated }) {
   const [customerId, setCustomerId] = useState('')
   const [items, setItems] = useState([{ productId: '', quantity: 1 }])
+  // Items the same customer buys outright in the same visit (e.g. renting a
+  // car but also buying an oil filter) — bundled into a single checkout with
+  // the rental, but recorded as their own SaleTransaction server-side so
+  // stock/debt logic for each stays correct. Only offered when creating a
+  // rental from scratch; editing an existing rental doesn't touch its
+  // bundled sale.
+  const [saleItems, setSaleItems] = useState([])
+  const [saleDiscountAmount, setSaleDiscountAmount] = useState('')
+  const [salePayments, setSalePayments] = useState([])
   const [expectedReturnDate, setExpectedReturnDate] = useState('')
   // Frozen "now" the return date was last chosen against — used (instead of
   // a fresh `new Date()` on every render) so the under-1-day check doesn't
@@ -333,6 +350,9 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     const now = new Date()
     setCustomerId('')
     setItems([{ productId: '', quantity: 1 }])
+    setSaleItems([])
+    setSaleDiscountAmount('')
+    setSalePayments([])
     setRentalStartSnapshot(now)
     setExpectedReturnDate(toDatetimeLocalValue(new Date(now.getTime() + 24 * 60 * 60 * 1000)))
     setDiscount('')
@@ -457,6 +477,44 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
   const addItem = () => setItems((prev) => [...prev, { productId: '', quantity: 1 }])
   const removeItem = (idx) => setItems((prev) => prev.filter((_, i) => i !== idx))
 
+  const updateSaleItem = (idx, patch) => {
+    setSaleItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+  }
+  const addSaleItem = () => setSaleItems((prev) => [...prev, { productId: '', quantity: 1 }])
+  const removeSaleItem = (idx) => setSaleItems((prev) => prev.filter((_, i) => i !== idx))
+
+  const selectedSaleProducts = saleItems.map((it) => saleProducts.find((p) => p._id === it.productId)).filter(Boolean)
+  const saleSubtotal = selectedSaleProducts.reduce((sum, p, i) => sum + p.salePrice * (Number(saleItems[i]?.quantity) || 1), 0)
+  const resolvedSaleDiscount = Math.max(0, Number(saleDiscountAmount) || 0)
+  const saleTotal = Math.max(0, saleSubtotal - resolvedSaleDiscount)
+  const saleAllocated = salePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  const saleUnallocated = Math.max(0, saleTotal - saleAllocated)
+
+  // Two rows can pick the same sale product — check the combined quantity
+  // against stock, not each row in isolation.
+  const saleStockIssues = (() => {
+    const requestedByProduct = new Map()
+    for (const it of saleItems) {
+      if (!it.productId) continue
+      requestedByProduct.set(it.productId, (requestedByProduct.get(it.productId) || 0) + (Number(it.quantity) || 0))
+    }
+    const issues = []
+    for (const [productId, requested] of requestedByProduct) {
+      const product = saleProducts.find((p) => p._id === productId)
+      if (product && requested > product.stockQty) {
+        issues.push({ name: product.name, available: product.stockQty, requested })
+      }
+    }
+    return issues
+  })()
+
+  const updateSalePayment = (idx, patch) => {
+    setSalePayments((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)))
+  }
+  const addSalePayment = () =>
+    setSalePayments((prev) => [...prev, { paymentMethodId: '', amount: saleUnallocated > 0 ? String(saleUnallocated) : '' }])
+  const removeSalePayment = (idx) => setSalePayments((prev) => prev.filter((_, i) => i !== idx))
+
   const selectedProducts = items
     .map((it) => products.find((p) => p._id === it.productId))
     .filter(Boolean)
@@ -482,6 +540,26 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
     const cleanItems = items.filter((it) => it.productId).map((it) => ({ productId: it.productId, quantity: Number(it.quantity) || 1 }))
     if (!customerId || cleanItems.length === 0) {
       setError('Select a customer and at least one product.')
+      return
+    }
+
+    const cleanSaleItems = saleItems.filter((it) => it.productId).map((it) => ({ productId: it.productId, quantity: Number(it.quantity) || 1 }))
+    if (saleStockIssues.length > 0) {
+      const issue = saleStockIssues[0]
+      setError(
+        issue.available === 0
+          ? `${issue.name} is out of stock.`
+          : `${issue.name} is out of stock — only ${issue.available} left, but ${issue.requested} were requested.`
+      )
+      return
+    }
+    const cleanSalePayments = salePayments.filter((p) => p.paymentMethodId || p.amount)
+    if (cleanSalePayments.some((p) => !p.paymentMethodId || !(Number(p.amount) > 0))) {
+      setError('Every sale payment split needs a method and an amount greater than 0.')
+      return
+    }
+    if (saleAllocated > saleTotal) {
+      setError('The sale payment splits add up to more than the sale total.')
       return
     }
 
@@ -511,6 +589,11 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           expectedReturnDate: expectedReturnDate || computeDurationValue(24),
           discount: discount === '' ? undefined : Number(discount),
           deposits: deposits.length ? deposits : undefined,
+          saleItems: cleanSaleItems.length ? cleanSaleItems : undefined,
+          saleDiscountAmount: cleanSaleItems.length && resolvedSaleDiscount ? resolvedSaleDiscount : undefined,
+          salePayments: cleanSaleItems.length && cleanSalePayments.length
+            ? cleanSalePayments.map((p) => ({ paymentMethodId: p.paymentMethodId, amount: Number(p.amount) }))
+            : undefined,
         })
       }
       reset()
@@ -537,7 +620,7 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button form="rental-form" type="submit" loading={saving}>
+          <Button form="rental-form" type="submit" loading={saving} disabled={saleStockIssues.length > 0}>
             {mode === 'edit' ? 'Save changes' : 'Create rental'}
           </Button>
         </>
@@ -637,6 +720,129 @@ function RentalFormModal({ open, mode, rental, onClose, customers, products, met
             </div>
           )}
         </div>
+
+        {mode === 'create' && (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-ink-700">Sale items (optional)</span>
+              <Button type="button" size="sm" variant="subtle" icon={Plus} onClick={addSaleItem}>
+                Add item
+              </Button>
+            </div>
+            <p className="mb-2 text-xs text-ink-400">Items this customer is buying outright in the same visit — sold, not rented.</p>
+            {saleItems.length > 0 && (
+              <div className="space-y-2">
+                {saleItems.map((it, idx) => {
+                  const product = saleProducts.find((p) => p._id === it.productId)
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <ProductPicker
+                        products={saleProducts}
+                        value={it.productId}
+                        onChange={(id) => updateSaleItem(idx, { productId: id })}
+                        priceKey="salePrice"
+                        showStock
+                        placeholder="Search product to sell..."
+                        className="flex-1"
+                      />
+                      <Input
+                        type="number"
+                        min="1"
+                        max={product?.stockQty || undefined}
+                        value={it.quantity}
+                        onChange={(e) => updateSaleItem(idx, { quantity: e.target.value })}
+                        className="w-20"
+                      />
+                      <Button type="button" variant="ghost" size="sm" icon={Trash2} onClick={() => removeSaleItem(idx)} />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {saleItems.length > 0 && saleSubtotal > 0 && (
+              <>
+                <div className="mt-3 flex items-end justify-between gap-3">
+                  <Field label="Sale discount" hint="Optional — flat amount off the sale subtotal" className="w-40">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={saleDiscountAmount}
+                      onChange={(e) => setSaleDiscountAmount(e.target.value)}
+                    />
+                  </Field>
+                  <div className="pb-1 text-right text-sm font-medium text-ink-600">
+                    {resolvedSaleDiscount > 0 && (
+                      <p className="text-ink-400">
+                        Subtotal {formatMoney(saleSubtotal)} − discount {formatMoney(resolvedSaleDiscount)}
+                      </p>
+                    )}
+                    <p>
+                      Sale total: <span className="font-bold text-primary-700">{formatMoney(saleTotal)}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <span className="mb-2 block text-xs font-medium text-ink-700">Sale payment</span>
+                  {salePayments.length === 0 ? (
+                    <div className="flex items-center gap-3 rounded-lg border border-dashed border-ink-200 bg-ink-50/60 px-4 py-3 dark:border-ink-700 dark:bg-ink-800/30">
+                      <ShieldAlert size={18} className="shrink-0 text-warning-500" />
+                      <p className="text-xs text-ink-500 dark:text-ink-400">
+                        No payment added — the sale part will be recorded as <span className="font-semibold text-danger-600">debt</span> owed by the customer.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {salePayments.map((p, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <PaymentMethodPicker
+                            methods={methods}
+                            value={p.paymentMethodId}
+                            onChange={(id) => updateSalePayment(idx, { paymentMethodId: id })}
+                            placeholder="Search method..."
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={p.amount}
+                            onChange={(e) => updateSalePayment(idx, { amount: e.target.value })}
+                            placeholder="0.00"
+                            className="w-28"
+                          />
+                          <Button type="button" variant="ghost" size="sm" icon={Trash2} onClick={() => removeSalePayment(idx)} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Button type="button" size="sm" variant="subtle" icon={Plus} className="mt-2" onClick={addSalePayment}>
+                    Add payment {salePayments.length > 0 ? 'method' : ''}
+                  </Button>
+                </div>
+              </>
+            )}
+            {saleProducts.length === 0 && (
+              <p className="mt-1 text-xs text-ink-400">No sale products with stock available.</p>
+            )}
+            {saleStockIssues.length > 0 && (
+              <div className="mt-3">
+                <Alert>
+                  {saleStockIssues.map((issue, i) => (
+                    <p key={issue.name} className={i > 0 ? 'mt-1' : ''}>
+                      {issue.available === 0
+                        ? `${issue.name} is out of stock.`
+                        : `${issue.name} is out of stock — only ${issue.available} left, but ${issue.requested} were requested.`}
+                    </p>
+                  ))}
+                </Alert>
+              </div>
+            )}
+          </div>
+        )}
 
         <Field label="Expected return" hint="Defaults to 1 day — pick a different quick duration or set an exact date & time">
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -937,6 +1143,36 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
         totals.push({ label: 'Owed', value: formatMoney(transaction.remainingDebt), highlight: true })
       }
 
+      // Items bought outright in the same visit (RentalFormModal's "Sale
+      // items" section) — shown as their own section + totals, then rolled
+      // into a grand total below so the receipt reads as one order.
+      const sale = detail?.sale
+      const saleItemsSection = sale?.items?.length
+        ? [
+            {
+              title: 'Sale items',
+              rows: sale.items.map((it) => ({
+                left: `${it.productId?.name || 'Item'} · Qty ${it.quantity} · ${formatMoney(it.unitPrice)}`,
+                right: formatMoney(it.unitPrice * it.quantity),
+              })),
+            },
+          ]
+        : []
+      if (sale) {
+        const saleRemainingDebt = sale.remainingDebt ?? Math.max(0, sale.totalAmount - (sale.amountPaid || 0))
+        totals.push({ label: 'Sale total', value: formatMoney(sale.totalAmount) })
+        totals.push({ label: 'Sale paid', value: formatMoney(sale.amountPaid || 0), tone: 'success' })
+        if (saleRemainingDebt > 0) {
+          totals.push({ label: 'Sale owed', value: formatMoney(saleRemainingDebt), highlight: true })
+        }
+        totals.push({ label: 'Grand total', value: formatMoney(transaction.totalRentFee + sale.totalAmount), emphasize: true })
+        totals.push({
+          label: 'Grand total owed',
+          value: formatMoney(transaction.remainingDebt + saleRemainingDebt),
+          highlight: transaction.remainingDebt + saleRemainingDebt > 0,
+        })
+      }
+
       await downloadReceiptPdf(
         {
           docLabel: 'Rental Receipt',
@@ -977,7 +1213,7 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
               }
             }),
           },
-          extraSections: historyRows.length ? [{ title: 'History', rows: historyRows }] : [],
+          extraSections: [...saleItemsSection, ...(historyRows.length ? [{ title: 'History', rows: historyRows }] : [])],
           totals,
         },
         `rental-${transaction._id.slice(-6)}.pdf`
@@ -1094,6 +1330,8 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
 
           <RentedItems transaction={transaction} />
 
+          {detail.sale && <SoldItems sale={detail.sale} />}
+
           {/* Screen-only: the PDF and the print output both stop at History, so this
               on-screen-only ticker is kept out of print to match the PDF exactly. */}
           <div className="print:hidden">
@@ -1128,6 +1366,32 @@ function RentalDetailModal({ open, onClose, detail, autoPrint, methods, store, o
               </div>
             )}
           </div>
+
+          {detail.sale && (
+            <div className="rounded-xl border border-primary-100 bg-primary-50/60 p-4 text-sm dark:border-primary-500/20 dark:bg-primary-500/10">
+              <div className="flex items-center justify-between font-semibold text-ink-800 dark:text-ink-100">
+                <span>Grand total (rent + sale)</span>
+                <span className="font-display text-base text-primary-700 dark:text-primary-400">
+                  {formatMoney(transaction.totalRentFee + detail.sale.totalAmount)}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-success-600">
+                <span>Paid</span>
+                <span>{formatMoney((transaction.rentPaid || 0) + (detail.sale.amountPaid || 0))}</span>
+              </div>
+              {transaction.remainingDebt + (detail.sale.remainingDebt ?? Math.max(0, detail.sale.totalAmount - (detail.sale.amountPaid || 0))) > 0 && (
+                <div className="mt-1 flex items-center justify-between rounded-lg bg-danger-50 px-2.5 py-1.5 font-semibold text-danger-600 dark:bg-danger-500/10">
+                  <span>Owed</span>
+                  <span>
+                    {formatMoney(
+                      transaction.remainingDebt +
+                        (detail.sale.remainingDebt ?? Math.max(0, detail.sale.totalAmount - (detail.sale.amountPaid || 0)))
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {canReturn ? (
             // Staff-only return processing — not receipt content, so it's excluded from
@@ -1286,6 +1550,62 @@ function RentedItems({ transaction }) {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// Items bought outright in the same visit as the rental (see RentalFormModal's
+// "Sale items" section) — a separate SaleTransaction linked via orderId, shown
+// here as its own block so it's clear what was rented vs what was sold.
+function SoldItems({ sale }) {
+  const remainingDebt = sale.remainingDebt ?? Math.max(0, sale.totalAmount - (sale.amountPaid || 0))
+  return (
+    <div className="rounded-xl border border-ink-100 bg-white p-4">
+      <p className="mb-3 text-sm font-semibold text-ink-700">Sale items</p>
+      <div className="space-y-2">
+        {sale.items.map((it, i) => {
+          const product = it.productId
+          const productId = product?._id || product
+          return (
+            <div key={productId || i} className="flex items-center justify-between gap-3 rounded-lg border border-ink-100 p-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-ink-800">{product?.name || 'Item'}</p>
+                <p className="text-xs text-ink-400">
+                  Qty {it.quantity} · {formatMoney(it.unitPrice)}
+                </p>
+              </div>
+              <p className="font-semibold text-ink-800">{formatMoney(it.unitPrice * it.quantity)}</p>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-3 space-y-1 border-t border-ink-100 pt-3 text-sm dark:border-ink-800">
+        <div className="flex items-center justify-between text-ink-500">
+          <span>Subtotal</span>
+          <span>{formatMoney(sale.subtotal)}</span>
+        </div>
+        {sale.discountAmount > 0 && (
+          <div className="flex items-center justify-between text-danger-600">
+            <span>Discount</span>
+            <span>-{formatMoney(sale.discountAmount)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between font-semibold text-ink-800 dark:text-ink-100">
+          <span>Total</span>
+          <span>{formatMoney(sale.totalAmount)}</span>
+        </div>
+        <div className="flex items-center justify-between text-success-600">
+          <span>Paid</span>
+          <span>{formatMoney(sale.amountPaid || 0)}</span>
+        </div>
+        {remainingDebt > 0 && (
+          <div className="mt-1 flex items-center justify-between rounded-lg bg-danger-50 px-2.5 py-1.5 font-semibold text-danger-600 dark:bg-danger-500/10">
+            <span>Owed</span>
+            <span>{formatMoney(remainingDebt)}</span>
+          </div>
+        )}
       </div>
     </div>
   )

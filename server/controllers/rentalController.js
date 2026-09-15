@@ -4,7 +4,9 @@ const RentalDeposit = require("../models/RentalDeposit");
 const Payment = require("../models/Payment");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+const SaleTransaction = require("../models/SaleTransaction");
 const { reserveUnits, releaseUnits, removeFromFleet } = require("../utils/productAvailability");
+const { createSaleTransaction } = require("../utils/saleTransactionHelper");
 
 // Frontend can send stray "null"/"" entries when nothing is selected —
 // keep only real ObjectIds so Mongoose casting doesn't blow up.
@@ -80,7 +82,7 @@ async function createDepositRecord({ storeId, transaction, customer, deposit, us
 
 const createRental = async (req, res, next) => {
   try {
-    const { customerId, items, expectedReturnDate, deposits, discount } = req.body;
+    const { customerId, items, expectedReturnDate, deposits, discount, saleItems, saleDiscountAmount, salePayments } = req.body;
 
     if (!customerId || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "customerId and items are required" });
@@ -152,7 +154,29 @@ const createRental = async (req, res, next) => {
       createdDeposits.push(rentalDeposit);
     }
 
-    res.status(201).json({ transaction, deposits: createdDeposits });
+    // Optional: sale items bought in the same visit (e.g. a customer renting
+    // a car also buys an oil filter at the counter). Created as its own
+    // SaleTransaction — separate stock/debt logic from the rental — but
+    // linked via orderId so the receipt can show both under one visit.
+    let sale = null;
+    let saleCreatedPayments = [];
+    if (Array.isArray(saleItems) && saleItems.length > 0) {
+      const result = await createSaleTransaction({
+        storeId: req.storeId,
+        customerId,
+        customer,
+        staffUserId: req.user.id,
+        items: saleItems,
+        discountAmount: saleDiscountAmount,
+        payments: salePayments,
+        orderId: transaction._id,
+        userId: req.user.id
+      });
+      sale = result.sale;
+      saleCreatedPayments = result.payments;
+    }
+
+    res.status(201).json({ transaction, deposits: createdDeposits, sale, payments: saleCreatedPayments });
   } catch (err) {
     next(err);
   }
@@ -188,7 +212,19 @@ const getRentalById = async (req, res, next) => {
       .populate("paymentMethodId", "name")
       .populate("recordedBy", "name")
       .sort({ date: 1 });
-    res.json({ transaction: rental, deposits, payments });
+
+    // Sale items bought in the same visit (see createRental), if any.
+    const sale = await SaleTransaction.findOne({ orderId: rental._id, storeId: req.storeId })
+      .populate("items.productId", "name")
+      .populate("paymentSplits.paymentMethodId", "name");
+    const salePayments = sale
+      ? await Payment.find({ saleId: sale._id, storeId: req.storeId })
+          .populate("paymentMethodId", "name")
+          .populate("recordedBy", "name")
+          .sort({ date: 1 })
+      : [];
+
+    res.json({ transaction: rental, deposits, payments, sale, salePayments });
   } catch (err) {
     next(err);
   }

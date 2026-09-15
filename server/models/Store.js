@@ -6,6 +6,11 @@ const storeSchema = new mongoose.Schema({
   ownerPhone: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
   status: { type: String, enum: ["active", "inactive"], default: "active" },
+  // Unlike the other feature flags, this defaults true — the system started
+  // as a rentals-only product, so every store created before this flag
+  // existed (and every one that doesn't explicitly opt out) keeps rentals
+  // working exactly as before.
+  rentalsEnabled: { type: Boolean, default: true },
   salesEnabled: { type: Boolean, default: false },
   expensesEnabled: { type: Boolean, default: false },
   transfersEnabled: { type: Boolean, default: false },

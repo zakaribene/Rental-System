@@ -20,8 +20,13 @@ const createProduct = async (req, res, next) => {
       if (salePrice === undefined || stockQty === undefined) {
         return res.status(400).json({ message: "salePrice and stockQty are required for a sale product" });
       }
-    } else if (rentPrice === undefined) {
-      return res.status(400).json({ message: "rentPrice is required for a rent product" });
+    } else {
+      if (!req.storeFeatures?.rentalsEnabled) {
+        return res.status(403).json({ code: "FEATURE_DISABLED", message: "Rentals ma shaqeynayo dukaankan." });
+      }
+      if (rentPrice === undefined) {
+        return res.status(400).json({ message: "rentPrice is required for a rent product" });
+      }
     }
 
     // availableQty is a RENT-only concept — SALE products track stock via
@@ -76,6 +81,9 @@ const updateProduct = async (req, res, next) => {
 
     if (listingType === "SALE" && !req.storeFeatures?.salesEnabled) {
       return res.status(403).json({ code: "FEATURE_DISABLED", message: "Sales ma shaqeynayo dukaankan." });
+    }
+    if (listingType === "RENT" && !req.storeFeatures?.rentalsEnabled) {
+      return res.status(403).json({ code: "FEATURE_DISABLED", message: "Rentals ma shaqeynayo dukaankan." });
     }
 
     const product = await Product.findOne({ _id: req.params.id, storeId: req.storeId });
