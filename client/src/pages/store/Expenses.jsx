@@ -21,7 +21,12 @@ import { formatMoney, formatDateTime, cn } from '../../lib/utils'
 import { apiErrorMessage } from '../../api/client'
 import { getMethodVisual } from '../../lib/paymentMethodVisuals'
 
-const emptyForm = { description: '', category: '', amount: '', paymentMethodId: '' }
+const today = () => {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+const emptyForm = () => ({ description: '', category: '', amount: '', paymentMethodId: '', date: today() })
 
 export default function Expenses() {
   const { can, loaded } = usePermissions()
@@ -33,7 +38,7 @@ export default function Expenses() {
   const [store, setStore] = useState(null)
   const [storeChecked, setStoreChecked] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState(emptyForm())
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -64,7 +69,7 @@ export default function Expenses() {
   }, [])
 
   const openCreate = () => {
-    setForm(emptyForm)
+    setForm(emptyForm())
     setError('')
     setModalOpen(true)
   }
@@ -85,6 +90,7 @@ export default function Expenses() {
         category: form.category || undefined,
         amount: Number(form.amount),
         paymentMethodId: form.paymentMethodId,
+        date: form.date || undefined,
       })
       setModalOpen(false)
       load()
@@ -239,7 +245,7 @@ export default function Expenses() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title="New expense"
-        subtitle="Recorded with the current date and time automatically."
+        subtitle="Choose the date this expense occurred."
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
@@ -253,6 +259,16 @@ export default function Expenses() {
       >
         <form id="expense-form" onSubmit={handleSubmit} className="space-y-4">
           {error && <Alert>{error}</Alert>}
+
+          <Field label="Date" required>
+            <Input
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+              max={today()}
+              required
+            />
+          </Field>
 
           <Field label="Description" required>
             <Input

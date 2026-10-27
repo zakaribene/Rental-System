@@ -10,7 +10,7 @@ const EXPENSE_POPULATE = [
 
 const createExpense = async (req, res, next) => {
   try {
-    const { description, category, amount, paymentMethodId } = req.body;
+    const { description, category, amount, paymentMethodId, date } = req.body;
     if (!description || amount === undefined || !paymentMethodId) {
       return res.status(400).json({ message: "description, amount and paymentMethodId are required" });
     }
@@ -38,7 +38,8 @@ const createExpense = async (req, res, next) => {
       category: category || undefined,
       amount: numAmount,
       paymentMethodId,
-      recordedBy: req.user.id
+      recordedBy: req.user.id,
+      ...(date ? { date: new Date(date) } : {})
     });
 
     const populated = await Expense.findById(expense._id).populate(EXPENSE_POPULATE);
@@ -55,7 +56,7 @@ const getExpenses = async (req, res, next) => {
     if (from || to) {
       filter.date = {};
       if (from) filter.date.$gte = new Date(from);
-      if (to) filter.date.$lte = new Date(to);
+      if (to) { const d = new Date(to); d.setHours(23, 59, 59, 999); filter.date.$lte = d; }
     }
     if (category) filter.category = category;
     if (method) filter.paymentMethodId = method;

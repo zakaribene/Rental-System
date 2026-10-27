@@ -16,7 +16,7 @@ import {
   Receipt,
   ClipboardList,
 } from 'lucide-react'
-import { getDailyTotals, getSummary, getSalesReport, getExpenseReport } from '../../api/reports'
+import { getDailyTotals, getSummary, getSalesReport } from '../../api/reports'
 import { listPaymentMethods, listPayments } from '../../api/payments'
 import { listCustomers } from '../../api/customers'
 import { listProducts } from '../../api/products'
@@ -140,7 +140,6 @@ export default function Reports() {
   const [saleIdFilter, setSaleIdFilter] = useState('')
 
   // --- Expenses tab ---
-  const [expenseReport, setExpenseReport] = useState(null)
   const [expenseRows, setExpenseRows] = useState([])
   const [expenseLoading, setExpenseLoading] = useState(true)
   const [expenseExporting, setExpenseExporting] = useState('')
@@ -215,11 +214,8 @@ export default function Reports() {
     const params = {}
     if (from) params.from = from
     if (to) params.to = to
-    Promise.all([getExpenseReport(params), listExpenses(params)])
-      .then(([report, expenses]) => {
-        setExpenseReport(report)
-        setExpenseRows(expenses)
-      })
+    listExpenses(params)
+      .then(setExpenseRows)
       .finally(() => setExpenseLoading(false))
   }, [store?.expensesEnabled, from, to])
 
@@ -782,71 +778,6 @@ export default function Reports() {
 
       {activeTab === 'expenses' && store?.expensesEnabled && (
         <>
-          <Card className="mb-6">
-            <CardHeader title="Expenses overview" subtitle="What the store spent, by category and by payment method — across the full date range" />
-            <CardBody>
-              {expenseLoading ? (
-                <div className="flex h-32 items-center justify-center">
-                  <Spinner size={26} />
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <StatCard label="Total spent" value={formatMoney(expenseReport?.totalSpent || 0)} icon={Receipt} tone="danger" />
-                    <StatCard label="Total expenses" value={expenseReport?.totalCount || 0} icon={Filter} tone="info" />
-                  </div>
-
-                  <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <div>
-                      <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Spent by category</p>
-                      {!expenseReport?.byCategory?.length ? (
-                        <EmptyState icon={Tag} title="No expenses in this range" />
-                      ) : (
-                        <div className="space-y-2">
-                          {expenseReport.byCategory.map((c) => (
-                            <div key={c._id} className="flex items-center justify-between rounded-lg border border-ink-100 p-3 dark:border-ink-800">
-                              <div>
-                                <p className="text-sm font-semibold text-ink-800 dark:text-ink-100">{c.name}</p>
-                                <p className="text-xs text-ink-400">{c.count} expense(s)</p>
-                              </div>
-                              <p className="font-semibold text-danger-600">{formatMoney(c.total)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <p className="mb-3 text-sm font-semibold text-ink-700 dark:text-ink-200">Spent by payment method</p>
-                      {!expenseReport?.byMethod?.length ? (
-                        <EmptyState icon={Wallet} title="No expenses in this range" />
-                      ) : (
-                        <div className="space-y-2">
-                          {expenseReport.byMethod.map((m) => {
-                            const visual = getMethodVisual(m.name)
-                            const Icon = visual.icon
-                            return (
-                              <div key={m._id} className="flex items-center gap-3 rounded-lg border border-ink-100 p-3 dark:border-ink-800">
-                                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-4', visual.bg, visual.ring)}>
-                                  <Icon size={16} className={visual.text} strokeWidth={2.25} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold text-ink-800 dark:text-ink-100">{m.name}</p>
-                                  <p className="text-xs text-ink-400">{m.count} expense(s)</p>
-                                </div>
-                                <p className="shrink-0 font-semibold text-danger-600">{formatMoney(m.total)}</p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardBody>
-          </Card>
-
           <Card>
             <CardHeader
               title="Filter transactions"

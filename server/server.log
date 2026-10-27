@@ -3,26 +3,5 @@
 > node index.js
 
 Server running on port 5000
-MongoDB connected: ac-dezfut5-shard-00-02.h865yin.mongodb.net
-Error: Not allowed by CORS
-    at origin (/Users/zakariaelmi/Documents/Rental-System/server/index.js:47:16)
-    at /Users/zakariaelmi/Documents/Rental-System/server/node_modules/cors/lib/index.js:219:13
-    at optionsCallback (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/cors/lib/index.js:199:9)
-    at corsMiddleware (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/cors/lib/index.js:204:7)
-    at Layer.handle [as handle_request] (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/layer.js:95:5)
-    at trim_prefix (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:328:13)
-    at /Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:286:9
-    at router.process_params (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:346:12)
-    at next (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:280:10)
-    at expressInit (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/middleware/init.js:40:5)
-Error: Not allowed by CORS
-    at origin (/Users/zakariaelmi/Documents/Rental-System/server/index.js:47:16)
-    at /Users/zakariaelmi/Documents/Rental-System/server/node_modules/cors/lib/index.js:219:13
-    at optionsCallback (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/cors/lib/index.js:199:9)
-    at corsMiddleware (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/cors/lib/index.js:204:7)
-    at Layer.handle [as handle_request] (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/layer.js:95:5)
-    at trim_prefix (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:328:13)
-    at /Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:286:9
-    at router.process_params (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:346:12)
-    at next (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/router/index.js:280:10)
-    at expressInit (/Users/zakariaelmi/Documents/Rental-System/server/node_modules/express/lib/middleware/init.js:40:5)
+MongoDB connected: ac-dezfut5-shard-00-00.h865yin.mongodb.net
+Tue, 15 Sep 2026 17:01:55 GMT express deprecated res.clearCookie: Passing "options.maxAge" is deprecated. In v5.0.0 of Express, this option will be ignored, as res.clearCookie will automatically set cookies to expire immediately. Please update your code to omit this option. at controllers\authController.js:125:9
