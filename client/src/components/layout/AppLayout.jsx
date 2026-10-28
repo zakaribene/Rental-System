@@ -38,14 +38,14 @@ export default function AppLayout() {
   }, [pathname])
 
   return (
-    <div className="min-h-screen bg-ink-50 dark:bg-ink-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="md:pl-64">
         {isStoreUser && <ImpersonationBar />}
         {isStoreUser && <SubscriptionBanner />}
         {isStoreUser && <AnnouncementBanner />}
         <Topbar title={title} onMenuClick={() => setSidebarOpen(true)} />
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className="px-4 py-4 sm:px-6 lg:px-8 lg:py-5">
           <Outlet />
         </main>
       </div>

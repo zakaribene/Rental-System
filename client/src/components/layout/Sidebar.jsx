@@ -94,38 +94,52 @@ export default function Sidebar({ open = false, onClose }) {
 
   return (
     <>
-      {open && (
-        <div className="fixed inset-0 z-30 bg-ink-950/50 backdrop-blur-sm md:hidden" onClick={onClose} />
-      )}
+      <div
+        className={cn(
+          'fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-sm transition-opacity duration-300 md:hidden',
+          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        )}
+        onClick={onClose}
+      />
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-ink-100 bg-white transition-transform duration-200 dark:border-ink-800 dark:bg-ink-900',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-[#1e2b3c] bg-[#0f1623] transition-transform duration-300 ease-in-out',
           'md:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-16 items-center justify-between gap-2.5 border-b border-ink-100 px-6 dark:border-ink-800">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-pop">
-              <Sparkles size={18} className="text-white" />
+        {/* Logo */}
+        <div className="flex h-16 items-center justify-between gap-2.5 border-b border-[#1e2b3c] px-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 shadow-lg shadow-blue-900/40">
+              <Sparkles size={16} className="text-white" />
             </div>
             <div>
-              <p className="font-display text-sm font-extrabold leading-tight text-ink-900 dark:text-white">Rental System</p>
-              <p className="text-[11px] font-medium leading-tight text-ink-400 dark:text-ink-300">
+              <p className="font-display text-sm font-bold leading-tight text-white">Rental System</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider leading-tight text-slate-500">
                 {isSuperAdmin ? 'Super Admin' : 'Store Console'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-ink-800 md:hidden"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white md:hidden"
           >
-            <X size={18} />
+            <X size={17} />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
+        {/* Nav */}
+        <style>{`
+          @keyframes navCircle {
+            0%   { left: -24px; opacity: 0; }
+            15%  { opacity: 1; }
+            85%  { opacity: 1; }
+            100% { left: calc(100% + 8px); opacity: 0; }
+          }
+        `}</style>
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           {nav.map((item) => (
             <NavLink
               key={item.to}
@@ -133,28 +147,62 @@ export default function Sidebar({ open = false, onClose }) {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  'relative flex items-center gap-3 overflow-hidden rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300'
-                    : 'text-ink-500 hover:bg-ink-50 hover:text-ink-800 dark:text-ink-100 dark:hover:bg-ink-800 dark:hover:text-white'
+                    ? 'bg-blue-600/20 text-white'
+                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'
                 )
               }
             >
-              <item.icon size={18} strokeWidth={2.25} />
-              <span className="flex-1">{item.label}</span>
-              {item.badge === 'support' && supportUnread > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-500 px-1 text-[10px] font-bold text-white">
-                  {supportUnread > 99 ? '99+' : supportUnread}
-                </span>
+              {({ isActive }) => (
+                <>
+                  {/* White circle gliding across active item */}
+                  {isActive && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.28)',
+                        filter: 'blur(6px)',
+                        animation: 'navCircle 2.4s ease-in-out infinite',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+                  <span className="relative flex shrink-0 items-center justify-center">
+                    <item.icon size={17} strokeWidth={2} className={isActive ? 'text-blue-400' : ''} />
+                    {isActive && (
+                      <span className="absolute -inset-1 animate-ping rounded-full bg-blue-400/30" />
+                    )}
+                  </span>
+                  <span className="flex-1">{item.label}</span>
+                  {item.badge === 'support' && supportUnread > 0 ? (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                      {supportUnread > 99 ? '99+' : supportUnread}
+                    </span>
+                  ) : isActive ? (
+                    <span className="relative flex h-1.5 w-1.5 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-blue-400" />
+                    </span>
+                  ) : null}
+                </>
               )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="border-t border-ink-100 p-4 dark:border-ink-800">
-          <div className="rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 p-4 text-white shadow-pop">
-            <p className="text-xs font-semibold text-primary-100">Signed in as</p>
-            <p className="mt-1 font-display text-sm font-bold">{user?.role?.replace('_', ' ')}</p>
+        {/* Bottom user card */}
+        <div className="border-t border-[#1e2b3c] p-4">
+          <div className="rounded-xl bg-slate-800/60 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Signed in as</p>
+            <p className="mt-1 font-display text-sm font-bold text-white">{user?.name || user?.role?.replace('_', ' ')}</p>
+            <p className="text-[11px] text-slate-500">{user?.role?.replace('_', ' ')}</p>
           </div>
         </div>
       </aside>
