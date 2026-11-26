@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Package, Users, ClipboardList, Wallet, Clock, PiggyBank, Trophy, Star, Home, ChevronRight } from 'lucide-react'
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts'
+import { Package, Users, ClipboardList, Wallet, Clock, PiggyBank, Trophy, Star, Home, ChevronRight, CalendarDays, BarChart3 } from 'lucide-react'
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import * as d3 from 'd3'
 import * as topojson from 'topojson-client'
 import { listProducts } from '../../api/products'
@@ -9,9 +9,7 @@ import { listCustomers } from '../../api/customers'
 import { listRentals } from '../../api/rentals'
 import { getDailyTotals, getSummary, getAnalytics } from '../../api/reports'
 import { listPaymentMethods } from '../../api/payments'
-import Table from '../../components/ui/Table'
-import { StatusBadge } from '../../components/ui/Badge'
-import { Spinner, EmptyState } from '../../components/ui/Misc'
+import { Spinner } from '../../components/ui/Misc'
 import { formatMoney, formatDate, cn } from '../../lib/utils'
 import { useAuth } from '../../context/AuthContext'
 
@@ -22,28 +20,6 @@ const methodTones = [
   { bg: 'bg-amber-50 dark:bg-amber-500/15', text: 'text-amber-600 dark:text-amber-300', ring: 'ring-amber-100 dark:ring-amber-500/20', chart: '#f59e0b' },
   { bg: 'bg-rose-50 dark:bg-rose-500/15', text: 'text-rose-600 dark:text-rose-300', ring: 'ring-rose-100 dark:ring-rose-500/20', chart: '#f43f5e' },
 ]
-
-const chartTooltipStyle = {
-  borderRadius: 10,
-  border: '1px solid #e2e8f0',
-  background: '#ffffff',
-  color: '#1e293b',
-  fontSize: 13,
-  boxShadow: '0 4px 16px -4px rgba(15,23,42,0.15)',
-}
-
-function PieLegend({ payload }) {
-  return (
-    <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
-      {(payload || []).map((entry) => (
-        <div key={entry.value} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-          {entry.value}
-        </div>
-      ))}
-    </div>
-  )
-}
 
 const productStatusMeta = {
   available: { label: 'Available', color: '#10b981' },
@@ -73,42 +49,61 @@ function LiveClock() {
   )
 }
 
-function DashStatCard({ label, value, sub, subValue, subTone, icon: Icon, iconBg, iconColor }) {
+function DashStatCard({ label, value, sub, subValue, subTone, icon: Icon, tone, delay = 0 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-slate-700 dark:bg-slate-800/60">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">{label}</p>
-          <p className="mt-2 font-display text-[26px] font-bold leading-none text-slate-900 dark:text-white">{value}</p>
-        </div>
-        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', iconBg)}>
-          <Icon size={18} className={iconColor} />
-        </div>
+    <div className="rd-kpi" style={{ animationDelay: `${delay}ms` }}>
+      <div className="rd-kpi-icon" style={{ background: tone.bg }}>
+        <Icon size={21} style={{ color: tone.fg }} />
       </div>
+      <div className="rd-kpi-lbl">{label}</div>
+      <div className="rd-kpi-val" title={String(value)}>{value}</div>
       {sub && (
-        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-700">
-          <p className="text-xs text-slate-500 dark:text-slate-400">{sub}</p>
-          <p className={cn('text-xs font-bold', subTone ?? 'text-slate-700 dark:text-slate-200')}>{subValue}</p>
-        </div>
+        <>
+          <div className="rd-kpi-divider" />
+          <div className="rd-kpi-foot">
+            <span className="rd-kpi-foot-lbl">{sub}</span>
+            <span className="rd-kpi-foot-val" style={{ color: subTone || tone.fg }}>{subValue}</span>
+          </div>
+        </>
       )}
     </div>
   )
 }
 
-function SectionCard({ title, subtitle, action, children, className }) {
+function SectionCard({ title, subtitle, icon: Icon, action, children, className }) {
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800/60', className)}>
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-700">
+    <section className={cn('rd-card', className)}>
+      <div className="rd-ch">
         <div>
-          <p className="font-display text-sm font-bold text-slate-900 dark:text-white">{title}</p>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>}
+          <h2 className="rd-ct">{Icon && <Icon size={16} />}{title}</h2>
+          {subtitle && <p className="rd-cs">{subtitle}</p>}
         </div>
         {action}
       </div>
-      <div className="p-4">{children}</div>
+      {children}
+    </section>
+  )
+}
+
+function ChartTip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rd-tip">
+      <span>{label}</span>
+      <b>{formatMoney(payload[0].value)}</b>
     </div>
   )
 }
+
+const kpiTones = {
+  blue:   { bg: '#eff4ff', fg: '#1262ff' },
+  violet: { bg: '#f3efff', fg: '#7c3aed' },
+  amber:  { bg: '#fff5e6', fg: '#d97706' },
+  green:  { bg: '#e9f8ef', fg: '#16a34a' },
+  rose:   { bg: '#fdecef', fg: '#e11d48' },
+}
+
+const pillTone = { active: 'b', overdue: 'e', returned: 'ok', completed: 'ok', cancelled: 'w' }
 
 // ── Globe constants ──────────────────────────────────────────────────────────
 const GLOBE_SOM_LON = 45.34, GLOBE_SOM_LAT = 2.05
@@ -263,24 +258,24 @@ function SomaliMapCard({ customers, rentals }) {
   const allList = [{ name: 'Somalia', count: customers, main: true }, ...GLOBE_CLIST]
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800/60">
+    <section className="rd-card">
       {/* Arc dash animation — CSS kept here so it applies to D3-rendered SVG children */}
       <style>{`@keyframes globeArcAnim { to { stroke-dashoffset: -18; } }`}</style>
 
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5 dark:border-slate-700">
+      <div className="rd-ch">
         <div>
-          <p className="flex items-center gap-2 font-display text-sm font-semibold text-slate-900 dark:text-white">
-            <svg className="h-[17px] w-[17px] shrink-0 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <h2 className="rd-ct">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
             World map · Customers by country
-          </p>
-          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{customers} active customers · Somalia</p>
+          </h2>
+          <p className="rd-cs">{customers} active customers · Somalia</p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
-          <button className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm">Customers</button>
-          <button className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400">Active today</button>
+        <div className="rd-seg" role="group" aria-label="Count by">
+          <button type="button" className="rd-sg on">Customers</button>
+          <button type="button" className="rd-sg">Active today</button>
         </div>
       </div>
 
@@ -290,7 +285,7 @@ function SomaliMapCard({ customers, rentals }) {
         {/* Map area */}
         <div
           ref={mapRef}
-          className="relative m-3 mr-0 min-w-0 flex-1 overflow-hidden rounded-xl"
+          className="relative m-3 mr-0 mt-4 min-w-0 flex-1 overflow-hidden rounded-xl"
           style={{
             background: 'radial-gradient(ellipse at 50% 42%, #f4f8ff 0%, #dbe7fb 100%)',
             cursor: isDragging ? 'grabbing' : 'grab',
@@ -315,7 +310,7 @@ function SomaliMapCard({ customers, rentals }) {
                 key={arc.name}
                 d={arc.d}
                 fill="none"
-                stroke="#2563eb"
+                stroke="#1262ff"
                 strokeWidth="1.6"
                 strokeOpacity="0.72"
                 strokeDasharray="5 4"
@@ -335,9 +330,9 @@ function SomaliMapCard({ customers, rentals }) {
               <div style={{
                 position: 'absolute',
                 width: m.main ? 14 : 10, height: m.main ? 14 : 10,
-                background: '#2563eb', border: '2.5px solid white', borderRadius: '50%',
+                background: '#1262ff', border: '2.5px solid white', borderRadius: '50%',
                 transform: 'translate(-50%, -50%)',
-                boxShadow: `0 0 0 ${m.main ? 6 : 3}px rgba(37,99,235,${m.main ? 0.22 : 0.15})`,
+                boxShadow: `0 0 0 ${m.main ? 6 : 3}px rgba(18,98,255,${m.main ? 0.22 : 0.15})`,
               }} />
               {/* Pill label */}
               <div style={{ position: 'absolute', bottom: 'calc(50% + 9px)', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
@@ -351,7 +346,7 @@ function SomaliMapCard({ customers, rentals }) {
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999,
-                    background: m.main ? '#2563eb' : '#7c3aed',
+                    background: m.main ? '#1262ff' : '#0a1633',
                     color: 'white', fontSize: 10, fontWeight: 700,
                   }}>{m.count}</span>
                 </div>
@@ -374,12 +369,7 @@ function SomaliMapCard({ customers, rentals }) {
               key={i}
               onClick={btn.fn}
               title={btn.title}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-lg border shadow-sm transition-colors',
-                btn.active
-                  ? 'border-blue-400 bg-blue-50 text-blue-600 dark:border-blue-500 dark:bg-blue-500/20 dark:text-blue-400'
-                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700',
-              )}
+              className={cn('rd-btn', btn.active && 'on')}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-[16px] w-[16px]">{btn.svg}</svg>
             </button>
@@ -388,31 +378,31 @@ function SomaliMapCard({ customers, rentals }) {
 
         {/* Country list */}
         <div
-          className="hidden w-[172px] shrink-0 overflow-y-auto border-l border-slate-100 py-3 dark:border-slate-700 sm:block"
+          className="mt-4 hidden w-[180px] shrink-0 overflow-y-auto border-l border-[#edf1f8] py-1 dark:border-[#2a3b55] sm:block"
           style={{ maxHeight: 360 }}
         >
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Countries</p>
+          <p className="rd-sec-label px-3">Countries</p>
           {allList.map(c => (
-            <div key={c.name} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60">
-              <div className={cn('h-2 w-2 shrink-0 rounded-full', c.main ? 'bg-blue-600' : 'bg-blue-400')} />
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{c.name}</span>
-              <span className="shrink-0 text-xs font-bold text-slate-800 dark:text-slate-200">{c.count}</span>
-              <span className="w-6 shrink-0 text-right text-[10px] text-slate-400">{Math.round((c.count / Math.max(customers, 1)) * 100)}%</span>
+            <div key={c.name} className="mx-1 flex h-[30px] items-center gap-2 rounded-lg px-2 text-[13px] hover:bg-[#f1f5ff] dark:hover:bg-[rgba(96,165,250,.1)]">
+              <i className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.main ? '#1262ff' : '#93b4ff' }} />
+              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              <b className="mono shrink-0 text-[13px] font-semibold">{c.count}</b>
+              <span className="mono w-8 shrink-0 text-right text-[11px] text-[#9aa3b5]">{Math.round((c.count / Math.max(customers, 1)) * 100)}%</span>
             </div>
           ))}
-          <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 px-3 pt-3 dark:border-slate-700">
+          <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#edf1f8] px-3 pt-3 dark:border-[#2a3b55]">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total</p>
-              <p className="mt-0.5 font-display text-lg font-bold text-slate-900 dark:text-white">{customers}</p>
+              <p className="rd-cs !mt-0">Total</p>
+              <p className="mono mt-0.5 text-lg font-semibold">{customers}</p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Rentals</p>
-              <p className="mt-0.5 font-display text-lg font-bold text-slate-900 dark:text-white">{rentals}</p>
+              <p className="rd-cs !mt-0">Rentals</p>
+              <p className="mono mt-0.5 text-lg font-semibold">{rentals}</p>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -450,10 +440,6 @@ export default function StoreDashboard() {
       .sort((a, b) => b.total - a.total)
   }, [summary, methods])
 
-  const chartData = useMemo(
-    () => balanceCards.map((s) => ({ name: s.name, total: s.total, fill: s.tone.chart })),
-    [balanceCards]
-  )
 
   const statusData = useMemo(() => {
     const counts = products.reduce((acc, p) => { acc[p.status] = (acc[p.status] || 0) + 1; return acc }, {})
@@ -475,204 +461,154 @@ export default function StoreDashboard() {
   const available   = products.filter((p) => p.status === 'available').length
   const overdue     = rentals.filter((r) => r.status === 'overdue').length
   const allTimeTotal = summary.reduce((sum, s) => sum + s.total, 0)
-  const dayStr = new Date().toLocaleDateString([], { weekday: 'long' })
+  const txnCount    = summary.reduce((n, s) => n + s.count, 0)
+  const dayStr      = new Date().toLocaleDateString([], { weekday: 'long' })
+  const maxMethod   = Math.max(1, ...balanceCards.map((s) => s.total))
+  const trendTotal  = trendData.reduce((n, t) => n + t.total, 0)
+  const lastTwo     = trendData.slice(-2)
+  const trendDelta  = lastTwo.length === 2 && lastTwo[0].total > 0
+    ? Math.round(((lastTwo[1].total - lastTwo[0].total) / lastTwo[0].total) * 100)
+    : null
+  const maxProd     = Math.max(1, ...analytics.topProducts.map((p) => p.rentals || 0))
+  const maxCust     = Math.max(1, ...analytics.topCustomers.map((c) => c.revenue || 0))
+  const rentalCols  = { gridTemplateColumns: 'minmax(0,1fr) 90px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 96px' }
 
   return (
-    <div className="animate-fadeIn space-y-3">
+    <div className="rd-page">
 
-      {/* ── Header banner ── */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800/60">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-500/15">
-              <Home size={16} className="text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
-                <span>Home</span>
-                <span>/</span>
-                <span className="font-semibold text-slate-600 dark:text-slate-300">Dashboard</span>
-                <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/20">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Live
-                </span>
-              </div>
-              <h1 className="font-display text-lg font-bold leading-tight text-slate-900 dark:text-white">Dashboard</h1>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">{dayStr} · Live operational overview</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:flex">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              {new Date().toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-            </span>
-            <Link
-              to="/store/rentals"
-              className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20"
-            >
-              All Rentals
-              <ChevronRight size={12} />
-            </Link>
-          </div>
+      {/* ── Header bar ── */}
+      <header className="rd-head">
+        <span className="ic"><Home size={17} /></span>
+        <nav aria-label="Breadcrumb">
+          <span className="muted">Home</span>
+          <span className="muted" aria-hidden="true">/</span>
+          <h1>Dashboard</h1>
+        </nav>
+        <span className="rd-live"><i />Live</span>
+        <span className="headline">{dayStr} · Live operational overview</span>
+        <div className="tools">
+          <span className="rd-chip hidden sm:inline-flex">
+            <CalendarDays size={15} />
+            {new Date().toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+          <Link to="/store/rentals" className="rd-chip primary">
+            All Rentals
+            <ChevronRight size={14} />
+          </Link>
         </div>
+      </header>
+
+      {/* ── Number cards ── */}
+      <div className="rd-kpis">
+        <DashStatCard delay={0}   label="Products"         value={`${available}/${products.length}`} sub="Available"      subValue={available}            subTone="#16a34a" icon={Package}       tone={kpiTones.blue} />
+        <DashStatCard delay={40}  label="Customers"        value={customers.length}                  sub="Registered"     subValue={customers.length}                       icon={Users}         tone={kpiTones.violet} />
+        <DashStatCard delay={80}  label="Active Rentals"   value={rentals.length}                    sub="Overdue"        subValue={overdue}              subTone={overdue > 0 ? '#b42318' : '#16a34a'} icon={ClipboardList} tone={kpiTones.amber} />
+        <DashStatCard delay={120} label="Collected Today"  value={formatMoney(daily.grandTotal)}     sub="Methods active" subValue={methods.length}       subTone="#1262ff" icon={Wallet}        tone={kpiTones.green} />
+        <DashStatCard delay={160} label="All-time Balance" value={formatMoney(allTimeTotal)}         sub="Net collected"  subValue={`${txnCount} txn(s)`} subTone="#3a4a6b" icon={PiggyBank}     tone={kpiTones.rose} />
       </div>
 
-      {/* ── 5 Stat cards ── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <DashStatCard
-          label="Products"
-          value={`${available}/${products.length}`}
-          sub="Available"
-          subValue={available}
-          subTone="text-emerald-600 dark:text-emerald-400"
-          icon={Package}
-          iconBg="bg-blue-50 dark:bg-blue-500/15"
-          iconColor="text-blue-600 dark:text-blue-400"
-        />
-        <DashStatCard
-          label="Customers"
-          value={customers.length}
-          sub="Registered"
-          subValue={customers.length}
-          subTone="text-blue-600 dark:text-blue-400"
-          icon={Users}
-          iconBg="bg-violet-50 dark:bg-violet-500/15"
-          iconColor="text-violet-600 dark:text-violet-400"
-        />
-        <DashStatCard
-          label="Active Rentals"
-          value={rentals.length}
-          sub="Overdue"
-          subValue={overdue}
-          subTone={overdue > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}
-          icon={ClipboardList}
-          iconBg="bg-amber-50 dark:bg-amber-500/15"
-          iconColor="text-amber-600 dark:text-amber-400"
-        />
-        <DashStatCard
-          label="Collected Today"
-          value={formatMoney(daily.grandTotal)}
-          sub="Methods active"
-          subValue={methods.length}
-          subTone="text-blue-600 dark:text-blue-400"
-          icon={Wallet}
-          iconBg="bg-emerald-50 dark:bg-emerald-500/15"
-          iconColor="text-emerald-600 dark:text-emerald-400"
-        />
-        <DashStatCard
-          label="All-time Balance"
-          value={formatMoney(allTimeTotal)}
-          sub="Net collected"
-          subValue={summary.reduce((n, s) => n + s.count, 0) + ' txn(s)'}
-          subTone="text-slate-600 dark:text-slate-300"
-          icon={PiggyBank}
-          iconBg="bg-rose-50 dark:bg-rose-500/15"
-          iconColor="text-rose-600 dark:text-rose-400"
-        />
-      </div>
-
-      {/* ── Balance by method cards ── */}
+      {/* ── Balance by method tiles ── */}
       {balanceCards.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-            Balance by payment method
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {balanceCards.map((s) => (
-              <div
-                key={s._id}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-800/60"
-              >
-                <div className={cn('mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg', s.tone.bg)}>
-                  <Wallet size={13} className={s.tone.text} />
-                </div>
-                <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{s.name}</p>
-                <p className="mt-0.5 font-display text-sm font-bold text-slate-900 dark:text-white">{formatMoney(s.total)}</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">{s.count} txn(s)</p>
+          <p className="rd-sec-label">Balance by payment method</p>
+          <div className="rd-tiles">
+            {balanceCards.map((s, i) => (
+              <div key={s._id} className="rd-tile" style={{ animationDelay: `${i * 30}ms` }}>
+                <div className="rd-tile-top"><i style={{ background: s.tone.chart }} /><span className="truncate">{s.name}</span></div>
+                <b title={formatMoney(s.total)}>{formatMoney(s.total)}</b>
+                <small>{s.count} txn(s)</small>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Map + Balance row (2 cards side by side) ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* ── Map + balance ── */}
+      <div className="rd-grid2">
         <SomaliMapCard customers={customers.length} rentals={rentals.length} />
 
         <SectionCard
+          icon={Wallet}
           title="Balance by payment method"
           subtitle={`All-time total collected: ${formatMoney(allTimeTotal)}`}
         >
-          {chartData.length === 0 ? (
-            <EmptyState icon={Wallet} title="No payment data yet" />
+          {balanceCards.length === 0 ? (
+            <div className="rd-empty">No payment data yet</div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  {chartData.map((entry, i) => (
-                    <linearGradient key={i} id={`bg-${i}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={entry.fill} stopOpacity={1} />
-                      <stop offset="100%" stopColor={entry.fill} stopOpacity={0.5} />
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v) => formatMoney(v)} contentStyle={chartTooltipStyle} cursor={{ fill: '#f1f5f9' }} />
-                <Bar dataKey="total" radius={[6, 6, 0, 0]}>
-                  {chartData.map((_, i) => <Cell key={i} fill={`url(#bg-${i})`} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="rd-bk">
+              {balanceCards.map((s, i) => (
+                <div key={s._id} className="rd-bk-row">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <i className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.tone.chart }} />
+                    <span className="truncate">{s.name}</span>
+                    <span className="mono text-[11.5px] text-[#9aa3b5]">{Math.round((s.total / Math.max(allTimeTotal, 1)) * 100)}%</span>
+                  </span>
+                  <b>{formatMoney(s.total)}</b>
+                  <div className="tr">
+                    <i style={{ width: `${Math.max(2, (s.total / maxMethod) * 100)}%`, background: s.tone.chart, animationDelay: `${i * 60}ms` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </SectionCard>
       </div>
 
-      {/* ── Trend + Top items ── */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+      {/* ── Trend + top lists ── */}
+      <div className={trendData.length > 0 ? 'rd-grid21' : 'rd-grid2'}>
         {trendData.length > 0 && (
           <SectionCard
-            className="lg:col-span-3"
+            className="flex flex-col"
+            icon={BarChart3}
             title="Revenue trend"
             subtitle={`Net collected per ${trendData.length > 6 ? 'week' : 'month'}`}
           >
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v) => formatMoney(v)} contentStyle={chartTooltipStyle} />
-                <Area type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2.5} fill="url(#trend-fill)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="rd-totals">
+              <div>
+                <div className="rd-cs rd-key !mt-0"><i />Collected</div>
+                <b className="rd-total">{formatMoney(trendTotal)}</b>{' '}
+                {trendDelta !== null && (
+                  <span className={cn('text-xs font-semibold', trendDelta >= 0 ? 'text-[#15803d]' : 'text-[#b42318]')}>
+                    {trendDelta >= 0 ? '+' : ''}{trendDelta}%
+                  </span>
+                )}
+              </div>
+              <div>
+                <div className="rd-cs rd-key !mt-0"><i style={{ background: '#bcd0fb' }} />Periods</div>
+                <b className="rd-total">{trendData.length}</b>
+              </div>
+            </div>
+            <div className="rd-chart mt-auto">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={trendData} margin={{ top: 12, right: 8, left: -8, bottom: 0 }} barCategoryGap="28%">
+                  <CartesianGrid stroke="#edf1f8" vertical={false} />
+                  <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#7a8499', fontFamily: 'Geist Mono' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#7a8499', fontFamily: 'Geist Mono' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(18,98,255,.06)' }} />
+                  <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                    {trendData.map((_, i) => (
+                      <Cell key={i} fill={i === trendData.length - 1 ? '#1262ff' : '#bcd0fb'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </SectionCard>
         )}
 
-        <div className={cn('grid grid-cols-1 gap-5', trendData.length > 0 ? 'lg:col-span-2' : 'lg:col-span-5 lg:grid-cols-2')}>
-          <SectionCard title="Top products" subtitle="Most rented items">
+        <div className={cn('grid gap-5', trendData.length > 0 ? 'grid-cols-1' : 'col-span-full grid-cols-1 lg:grid-cols-2')}>
+          <SectionCard icon={Trophy} title="Top products" subtitle="Most rented items">
             {analytics.topProducts.length === 0 ? (
-              <EmptyState icon={Trophy} title="No rentals yet" />
+              <div className="rd-empty">No rentals yet</div>
             ) : (
-              <div className="divide-y divide-slate-50 dark:divide-slate-700">
+              <div className="rd-rank-list">
                 {analytics.topProducts.map((p, i) => (
-                  <div key={p._id || i} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="flex items-center gap-3">
-                      <span className={cn(
-                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
-                        i === 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                      )}>{i + 1}</span>
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{p.name || 'Unknown'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">{p.rentals} rented</p>
-                      <p className="text-[11px] text-slate-400">{formatMoney(p.revenue)}</p>
+                  <div key={p._id || i} className={cn('rd-rank', i === 0 && 'first')} style={{ animationDelay: `${i * 40}ms` }}>
+                    <span className="rd-rank-n">{String(i + 1).padStart(2, '0')}</span>
+                    <div className="min-w-0">
+                      <div className="rd-rank-top"><span>{p.name || 'Unknown'}</span><b>{p.rentals} rented</b></div>
+                      <div className="rd-rank-sub"><span>Revenue</span><span className="mono">{formatMoney(p.revenue)}</span></div>
+                      <div className="tr"><i style={{ width: `${Math.max(3, ((p.rentals || 0) / maxProd) * 100)}%` }} /></div>
                     </div>
                   </div>
                 ))}
@@ -680,23 +616,18 @@ export default function StoreDashboard() {
             )}
           </SectionCard>
 
-          <SectionCard title="Top customers" subtitle="Highest revenue generated">
+          <SectionCard icon={Star} title="Top customers" subtitle="Highest revenue generated">
             {analytics.topCustomers.length === 0 ? (
-              <EmptyState icon={Star} title="No customers yet" />
+              <div className="rd-empty">No customers yet</div>
             ) : (
-              <div className="divide-y divide-slate-50 dark:divide-slate-700">
+              <div className="rd-rank-list">
                 {analytics.topCustomers.map((c, i) => (
-                  <div key={c._id || i} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="flex items-center gap-3">
-                      <span className={cn(
-                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
-                        i === 0 ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                      )}>{i + 1}</span>
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{c.fullName || 'Unknown'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">{formatMoney(c.revenue)}</p>
-                      <p className="text-[11px] text-slate-400">{c.rentals} rental(s)</p>
+                  <div key={c._id || i} className={cn('rd-rank', i === 0 && 'first')} style={{ animationDelay: `${i * 40}ms` }}>
+                    <span className="rd-rank-n">{String(i + 1).padStart(2, '0')}</span>
+                    <div className="min-w-0">
+                      <div className="rd-rank-top"><span>{c.fullName || 'Unknown'}</span><b>{formatMoney(c.revenue)}</b></div>
+                      <div className="rd-rank-sub"><span>{c.rentals} rental(s)</span></div>
+                      <div className="tr"><i style={{ width: `${Math.max(3, ((c.revenue || 0) / maxCust) * 100)}%` }} /></div>
                     </div>
                   </div>
                 ))}
@@ -706,21 +637,32 @@ export default function StoreDashboard() {
         </div>
       </div>
 
-      {/* ── Active rentals table ── */}
-      <SectionCard title="Active rentals" subtitle="Items currently out with customers">
-        <div className="-mx-4 -mb-4">
-          <Table
-            columns={[
-              { key: 'id',      header: 'Rental',   render: (row) => <span className="font-mono text-xs text-slate-400">#{row._id.slice(-6)}</span> },
-              { key: 'items',   header: 'Items',    render: (row) => `${row.items?.length || 0} item(s)` },
-              { key: 'fee',     header: 'Rent fee', render: (row) => formatMoney(row.totalRentFee) },
-              { key: 'dateOut', header: 'Date out', render: (row) => formatDate(row.dateOut) },
-              { key: 'due',     header: 'Due',      render: (row) => formatDate(row.expectedReturnDate) },
-              { key: 'status',  header: 'Status',   render: (row) => <StatusBadge status={row.status} /> },
-            ]}
-            data={rentals.slice(0, 8)}
-            emptyMessage="No active rentals right now."
-          />
+      {/* ── Active rentals ── */}
+      <SectionCard
+        icon={ClipboardList}
+        title="Active rentals"
+        subtitle="Items currently out with customers"
+        action={<Link to="/store/rentals" className="rd-lk">View all <ChevronRight size={13} /></Link>}
+      >
+        <div className="rd-list">
+          <div className="rd-th" style={rentalCols}>
+            <span>Rental</span><span>Items</span><span>Rent fee</span><span>Date out</span><span>Due</span><span className="rd-right">Status</span>
+          </div>
+          {rentals.length === 0 ? (
+            <div className="rd-empty">No active rentals right now.</div>
+          ) : rentals.slice(0, 8).map((row, i) => (
+            <div key={row._id} className="rd-lr" style={{ ...rentalCols, animationDelay: `${i * 30}ms` }}>
+              <span className="rd-name">
+                <span className="rd-av"><ClipboardList size={13} /></span>
+                <span className="mono rd-ellipsis text-xs">#{row._id.slice(-6)}</span>
+              </span>
+              <span>{row.items?.length || 0} item(s)</span>
+              <span className="mono font-semibold">{formatMoney(row.totalRentFee)}</span>
+              <span className="rd-date">{formatDate(row.dateOut)}</span>
+              <span className="rd-date">{formatDate(row.expectedReturnDate)}</span>
+              <span className="rd-right"><span className={cn('rd-pill', pillTone[row.status] || 'b')}>{row.status}</span></span>
+            </div>
+          ))}
         </div>
       </SectionCard>
 

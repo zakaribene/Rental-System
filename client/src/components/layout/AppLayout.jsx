@@ -38,9 +38,9 @@ export default function AppLayout() {
   }, [pathname])
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-[#f4f7fd] dark:bg-slate-950">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="md:pl-64">
+      <div className="md:pl-[272px]">
         {isStoreUser && <ImpersonationBar />}
         {isStoreUser && <SubscriptionBanner />}
         {isStoreUser && <AnnouncementBanner />}
