@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LogOut, ChevronDown, Sun, Moon, Menu } from 'lucide-react'
+import { LogOut, ChevronDown, Sun, Moon, Menu, Phone, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import NotificationBell from './NotificationBell'
@@ -20,6 +20,15 @@ export default function Topbar({ title, onMenuClick }) {
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   }, [open])
+
+  const roleLabel = (user?.role || '').replace('_', ' ').toLowerCase()
+  const displayName = user?.name || 'Super Admin'
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('')
 
   const today = new Date().toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
 
@@ -54,25 +63,53 @@ export default function Topbar({ title, onMenuClick }) {
 
         <div className="relative" ref={menuRef}>
           <button
+            type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="tb-prof"
+            aria-haspopup="menu"
+            aria-expanded={open}
           >
-            <AccountAvatar size={28} />
-            <div className="hidden text-left leading-tight sm:block">
-              <p className="text-xs font-semibold text-slate-800 dark:text-white">{user?.name || 'Super Admin'}</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-400">{user?.phone || '—'}</p>
-            </div>
-            <ChevronDown size={14} className="hidden text-slate-400 sm:block" />
+            <span className="tb-av" aria-hidden="true">{initials}<i /></span>
+            <span className="tb-who hidden sm:flex">
+              <b>{displayName}</b>
+              <span>{user?.phone || roleLabel}</span>
+            </span>
+            <ChevronDown size={16} className="tb-chev hidden sm:block" />
           </button>
 
           {open && (
-            <div className="absolute right-0 z-20 mt-1.5 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-fadeIn dark:border-slate-700 dark:bg-slate-900">
-              <button
-                onClick={logout}
-                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-500/10"
-              >
-                <LogOut size={15} />
-                Log out
+            <div className="tb-menu" role="menu">
+              <div className="tb-mhead">
+                <AccountAvatar size={42} />
+                <span className="min-w-0">
+                  <b className="truncate">{displayName}</b>
+                  <small className="capitalize">{roleLabel}</small>
+                </span>
+              </div>
+              <div className="tb-hr" />
+              <div className="tb-mi">
+                <Phone size={16} />
+                Phone
+                <span className="tb-mval">{user?.phone || '—'}</span>
+              </div>
+              <div className="tb-mi">
+                <ShieldCheck size={16} />
+                Role
+                <span className="tb-mval capitalize">{roleLabel}</span>
+              </div>
+              <div className="tb-hr" />
+              <div className="tb-mi">
+                <Moon size={16} />
+                Theme
+                <span className="tb-seg">
+                  <button type="button" className={theme === 'light' ? 'active' : ''} onClick={() => theme !== 'light' && toggleTheme()}>Light</button>
+                  <button type="button" className={theme === 'dark' ? 'active' : ''} onClick={() => theme !== 'dark' && toggleTheme()}>Dark</button>
+                </span>
+              </div>
+              <div className="tb-hr" />
+              <button type="button" role="menuitem" onClick={logout} className="tb-mi out">
+                <LogOut size={16} />
+                Sign out
               </button>
             </div>
           )}
